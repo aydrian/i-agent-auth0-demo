@@ -1,8 +1,8 @@
-import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth0 } from "@/lib/auth0";
+import { getStorage } from "@/lib/storage";
 
 const FileSchema = z.object({
   file: z
@@ -49,8 +49,8 @@ export async function POST(request: Request) {
     const fileBuffer = await file.arrayBuffer();
 
     try {
-      const data = await put(`${safeName}`, fileBuffer, {
-        access: "public",
+      const data = await getStorage().put(safeName, fileBuffer, {
+        contentType: file.type,
       });
 
       return NextResponse.json(data);
