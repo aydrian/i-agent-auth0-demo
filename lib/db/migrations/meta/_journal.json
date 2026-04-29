@@ -8,6 +8,13 @@
       "when": 1777472699322,
       "tag": "0000_chief_johnny_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777473639371,
+      "tag": "0001_last_blonde_phantom",
+      "breakpoints": true
     }
   ]
 }
