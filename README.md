@@ -29,10 +29,10 @@
   - Styling with [Tailwind CSS](https://tailwindcss.com)
   - Component primitives from [Radix UI](https://radix-ui.com) for accessibility and flexibility
 - Data Persistence
-  - [Neon Serverless Postgres](https://vercel.com/marketplace/neon) for saving chat history and user data
-  - [Vercel Blob](https://vercel.com/storage/blob) for efficient file storage
-- [Auth.js](https://authjs.dev)
-  - Simple and secure authentication
+  - Postgres (local via Docker, or [Neon Serverless](https://vercel.com/marketplace/neon) in production) for saving chat history and user data
+  - S3-compatible blob storage — [MinIO](https://min.io) locally, swappable for [Vercel Blob](https://vercel.com/storage/blob), AWS S3, Cloudflare R2, etc.
+- [Auth0](https://auth0.com)
+  - Universal Login and secure session management via [`@auth0/nextjs-auth0`](https://github.com/auth0/nextjs-auth0)
 
 ## Model Providers
 
@@ -54,37 +54,49 @@ You can deploy your own version of Chatbot to Vercel with one click:
 
 ## Running locally
 
-You will need to use the environment variables [defined in `.env.example`](.env.example) to run Chatbot. It's recommended you use [Vercel Environment Variables](https://vercel.com/docs/projects/environment-variables) for this, but a `.env` file is all that is necessary.
-
-> Note: You should not commit your `.env` file or it will expose secrets that will allow others to control access to your various AI and authentication provider accounts.
-
-1. Install Vercel CLI: `npm i -g vercel`
-2. Link local instance with Vercel and GitHub accounts (creates `.vercel` directory): `vercel link`
-3. Download your environment variables: `vercel env pull`
+You will need the environment variables [defined in `.env.example`](.env.example) to run Chatbot. Copy it to `.env.local` and fill in the values:
 
 ```bash
+cp .env.example .env.local
+```
+
+> Note: Do not commit `.env.local` — it will expose secrets that allow others to control access to your Auth0 tenant and LLM provider accounts.
+
+### 1. Configure Auth0
+
+Create a **Regular Web Application** in the [Auth0 dashboard](https://manage.auth0.com) (or via `auth0 apps create`) and set:
+
+- **Allowed Callback URLs:** `http://localhost:3000/auth/callback`
+- **Allowed Logout URLs:** `http://localhost:3000`
+- **Allowed Web Origins:** `http://localhost:3000`
+
+Copy the domain, client ID, and client secret into `.env.local`. Generate `AUTH0_SECRET` with `openssl rand -hex 32`.
+
+### 2. Start local services (Postgres, Redis, MinIO)
+
+The repo ships a `docker-compose.yml` that runs Postgres, Redis, and a MinIO S3-compatible blob store. Requires Docker Desktop (or any Docker Engine with Compose v2).
+
+```bash
+docker compose up -d       # start postgres, redis, and minio in the background
 pnpm install
-pnpm db:migrate # Setup database or apply latest database changes
-pnpm dev
-```
-
-Your app template should now be running on [localhost:3000](http://localhost:3000).
-
-### Local Postgres and Redis with Docker
-
-If you'd rather not depend on hosted Postgres/Redis during development, the repo ships a `docker-compose.yml` that runs both locally. Requires Docker Desktop (or any Docker Engine with Compose v2).
-
-```bash
-docker compose up -d       # start postgres + redis in the background
 pnpm db:migrate            # apply Drizzle migrations to the local Postgres
-pnpm dev                   # run the app
+pnpm dev                   # run the app on http://localhost:3000
 ```
 
-Point `POSTGRES_URL` and `REDIS_URL` in `.env.local` at the containers:
+The defaults in `.env.example` already point at the local containers — no changes needed unless you're using hosted services:
 
 ```
 POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/chatbot
 REDIS_URL=redis://localhost:6379
+S3_ENDPOINT=http://localhost:9000
+S3_BUCKET=chatbot-uploads
 ```
 
-Stop the services with `docker compose down`. Use `docker compose down -v` to also delete the named volumes (`postgres_data`, `redis_data`) and wipe all local data.
+The `minio-init` container automatically creates the `chatbot-uploads` bucket on first boot. The MinIO console is available at [localhost:9001](http://localhost:9001) (login `minioadmin` / `minioadmin`).
+
+Stop the services with `docker compose down`. Use `docker compose down -v` to also delete the named volumes (`postgres_data`, `redis_data`, `minio_data`) and wipe all local data.
+
+### Using hosted services instead
+
+- **Postgres / Redis:** swap `POSTGRES_URL` and `REDIS_URL` for any hosted provider (Neon, Upstash, Vercel Postgres, etc.).
+- **Blob storage:** set `BLOB_READ_WRITE_TOKEN` to use Vercel Blob instead of S3. Alternatively, point the `S3_*` variables at AWS S3, Cloudflare R2, or any S3-compatible service.
