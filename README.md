@@ -69,3 +69,22 @@ pnpm dev
 ```
 
 Your app template should now be running on [localhost:3000](http://localhost:3000).
+
+### Local Postgres and Redis with Docker
+
+If you'd rather not depend on hosted Postgres/Redis during development, the repo ships a `docker-compose.yml` that runs both locally. Requires Docker Desktop (or any Docker Engine with Compose v2).
+
+```bash
+docker compose up -d       # start postgres + redis in the background
+pnpm db:migrate            # apply Drizzle migrations to the local Postgres
+pnpm dev                   # run the app
+```
+
+Point `POSTGRES_URL` and `REDIS_URL` in `.env.local` at the containers:
+
+```
+POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/chatbot
+REDIS_URL=redis://localhost:6379
+```
+
+Stop the services with `docker compose down`. Use `docker compose down -v` to also delete the named volumes (`postgres_data`, `redis_data`) and wipe all local data.
