@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { auth } from "@/app/(auth)/auth";
 import type { ArtifactKind } from "@/components/chat/artifact";
+import { auth0 } from "@/lib/auth0";
 import {
   deleteDocumentsByIdAfterTimestamp,
   getDocumentsById,
@@ -27,9 +27,9 @@ export async function GET(request: Request) {
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await auth0.getSession();
 
-  if (!session?.user) {
+  if (!session?.user?.sub) {
     return new ChatbotError("unauthorized:document").toResponse();
   }
 
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     return new ChatbotError("not_found:document").toResponse();
   }
 
-  if (document.userId !== session.user.id) {
+  if (document.userId !== session.user.sub) {
     return new ChatbotError("forbidden:document").toResponse();
   }
 
@@ -59,9 +59,9 @@ export async function POST(request: Request) {
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await auth0.getSession();
 
-  if (!session?.user) {
+  if (!session?.user?.sub) {
     return new ChatbotError("not_found:document").toResponse();
   }
 
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
   if (documents.length > 0) {
     const [doc] = documents;
 
-    if (doc.userId !== session.user.id) {
+    if (doc.userId !== session.user.sub) {
       return new ChatbotError("forbidden:document").toResponse();
     }
   }
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     content,
     title,
     kind,
-    userId: session.user.id,
+    userId: session.user.sub,
   });
 
   return Response.json(document, { status: 200 });
@@ -128,9 +128,9 @@ export async function DELETE(request: Request) {
     ).toResponse();
   }
 
-  const session = await auth();
+  const session = await auth0.getSession();
 
-  if (!session?.user) {
+  if (!session?.user?.sub) {
     return new ChatbotError("unauthorized:document").toResponse();
   }
 
@@ -138,7 +138,7 @@ export async function DELETE(request: Request) {
 
   const [document] = documents;
 
-  if (document.userId !== session.user.id) {
+  if (document.userId !== session.user.sub) {
     return new ChatbotError("forbidden:document").toResponse();
   }
 

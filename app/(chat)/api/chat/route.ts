@@ -10,7 +10,6 @@ import {
 import { checkBotId } from "botid/server";
 import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
-import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import {
   allowedModelIds,
@@ -25,6 +24,7 @@ import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
+import { auth0 } from "@/lib/auth0";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
@@ -73,10 +73,10 @@ export async function POST(request: Request) {
 
     const [, session] = await Promise.all([
       checkBotId().catch(() => null),
-      auth(),
+      auth0.getSession(),
     ]);
 
-    if (!session?.user) {
+    if (!session?.user?.sub) {
       return new ChatbotError("unauthorized:chat").toResponse();
     }
 
@@ -86,14 +86,14 @@ export async function POST(request: Request) {
 
     await checkIpRateLimit(ipAddress(request));
 
-    const userType: UserType = session.user.type;
-
     const messageCount = await getMessageCountByUserId({
-      id: session.user.id,
+      id: session.user.sub,
       differenceInHours: 1,
     });
 
-    if (messageCount > entitlementsByUserType[userType].maxMessagesPerHour) {
+    if (
+      messageCount > entitlementsByUserType.authenticated.maxMessagesPerHour
+    ) {
       return new ChatbotError("rate_limit:chat").toResponse();
     }
 
@@ -104,14 +104,14 @@ export async function POST(request: Request) {
     let titlePromise: Promise<string> | null = null;
 
     if (chat) {
-      if (chat.userId !== session.user.id) {
+      if (chat.userId !== session.user.sub) {
         return new ChatbotError("forbidden:chat").toResponse();
       }
       messagesFromDb = await getMessagesByChatId({ id });
     } else if (message?.role === "user") {
       await saveChat({
         id,
-        userId: session.user.id,
+        userId: session.user.sub,
         title: "New chat",
         visibility: selectedVisibilityType,
       });
@@ -350,15 +350,15 @@ export async function DELETE(request: Request) {
     return new ChatbotError("bad_request:api").toResponse();
   }
 
-  const session = await auth();
+  const session = await auth0.getSession();
 
-  if (!session?.user) {
+  if (!session?.user?.sub) {
     return new ChatbotError("unauthorized:chat").toResponse();
   }
 
   const chat = await getChatById({ id });
 
-  if (chat?.userId !== session.user.id) {
+  if (chat?.userId !== session.user.sub) {
     return new ChatbotError("forbidden:chat").toResponse();
   }
 

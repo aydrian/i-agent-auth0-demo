@@ -1,11 +1,11 @@
 import { tool, type UIMessageStreamWriter } from "ai";
-import type { Session } from "next-auth";
 import { z } from "zod";
+import type { AppSession } from "@/lib/auth0-types";
 import { getDocumentById, saveDocument } from "@/lib/db/queries";
 import type { ChatMessage } from "@/lib/types";
 
 type EditDocumentProps = {
-  session: Session;
+  session: AppSession;
   dataStream: UIMessageStreamWriter<ChatMessage>;
 };
 
@@ -35,7 +35,7 @@ export const editDocument = ({ session, dataStream }: EditDocumentProps) =>
         return { error: "Document not found" };
       }
 
-      if (document.userId !== session.user?.id) {
+      if (document.userId !== session.user?.sub) {
         return { error: "Forbidden" };
       }
 

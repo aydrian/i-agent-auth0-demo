@@ -1,12 +1,12 @@
 import { tool, type UIMessageStreamWriter } from "ai";
-import type { Session } from "next-auth";
 import { z } from "zod";
 import { documentHandlersByArtifactKind } from "@/lib/artifacts/server";
+import type { AppSession } from "@/lib/auth0-types";
 import { getDocumentById } from "@/lib/db/queries";
 import type { ChatMessage } from "@/lib/types";
 
 type UpdateDocumentProps = {
-  session: Session;
+  session: AppSession;
   dataStream: UIMessageStreamWriter<ChatMessage>;
   modelId: string;
 };
@@ -35,7 +35,7 @@ export const updateDocument = ({
         };
       }
 
-      if (document.userId !== session.user?.id) {
+      if (document.userId !== session.user?.sub) {
         return { error: "Forbidden" };
       }
 

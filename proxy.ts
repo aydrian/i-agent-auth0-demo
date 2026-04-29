@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
-import { guestRegex, isDevelopmentEnvironment } from "./lib/constants";
+import { auth0 } from "@/lib/auth0";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -9,43 +8,33 @@ export async function proxy(request: NextRequest) {
     return new Response("pong", { status: 200 });
   }
 
-  if (pathname.startsWith("/api/auth")) {
-    return NextResponse.next();
+  // Auth0 mounts its own routes at /auth/* (login, logout, callback, profile)
+  // and refreshes the session cookie on every request. For /auth/* it returns
+  // a real response; for other paths it returns NextResponse.next() with the
+  // refreshed cookie attached.
+  const authRes = await auth0.middleware(request);
+
+  if (pathname.startsWith("/auth")) {
+    return authRes;
   }
 
-  const token = await getToken({
-    req: request,
-    secret: process.env.AUTH_SECRET,
-    secureCookie: !isDevelopmentEnvironment,
-  });
+  const session = await auth0.getSession(request);
 
-  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-
-  if (!token) {
-    const redirectUrl = encodeURIComponent(new URL(request.url).pathname);
-
+  if (!session) {
+    const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+    const returnTo = encodeURIComponent(
+      pathname + (request.nextUrl.search ?? "")
+    );
     return NextResponse.redirect(
-      new URL(`${base}/api/auth/guest?redirectUrl=${redirectUrl}`, request.url)
+      new URL(`${base}/auth/login?returnTo=${returnTo}`, request.url)
     );
   }
 
-  const isGuest = guestRegex.test(token?.email ?? "");
-
-  if (token && !isGuest && ["/login", "/register"].includes(pathname)) {
-    return NextResponse.redirect(new URL(`${base}/`, request.url));
-  }
-
-  return NextResponse.next();
+  return authRes;
 }
 
 export const config = {
   matcher: [
-    "/",
-    "/chat/:id",
-    "/api/:path*",
-    "/login",
-    "/register",
-
     "/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)",
   ],
 };
