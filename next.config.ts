@@ -18,9 +18,7 @@ const nextConfig: NextConfig = {
         ],
       }
     : {}),
-  env: {
-    NEXT_PUBLIC_BASE_PATH: basePath,
-  },
+  ...(basePath ? { env: { NEXT_PUBLIC_BASE_PATH: basePath } } : {}),
   cacheComponents: true,
   devIndicators: false,
   poweredByHeader: false,
