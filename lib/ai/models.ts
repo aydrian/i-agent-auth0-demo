@@ -1,4 +1,4 @@
-export const DEFAULT_CHAT_MODEL = "moonshotai/kimi-k2.5";
+export const DEFAULT_CHAT_MODEL = "openai/gpt-5.4-mini";
 
 export const titleModel = {
   id: "mistral/mistral-small",
@@ -67,6 +67,12 @@ export const chatModels: ChatModel[] = [
     description: "Open-source 120B parameter model",
     gatewayOrder: ["fireworks", "bedrock"],
     reasoningEffort: "low",
+  },
+  {
+    id: "openai/gpt-5.4-mini",
+    name: "GPT-5 Mini",
+    provider: "openai",
+    description: "Fast OpenAI model",
   },
   {
     id: "xai/grok-4.1-fast-non-reasoning",
