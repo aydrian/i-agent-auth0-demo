@@ -2,6 +2,8 @@
 
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useChat } from "@ai-sdk/react";
+import type { Auth0InterruptionUI } from "@auth0/ai-vercel";
+import { useInterruptions } from "@auth0/ai-vercel/react";
 import { DefaultChatTransport } from "ai";
 import { usePathname } from "next/navigation";
 import {
@@ -47,6 +49,7 @@ type ActiveChatContextValue = {
   setCurrentModelId: (id: string) => void;
   showCreditCardAlert: boolean;
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
+  toolInterrupt: Auth0InterruptionUI | null;
 };
 
 const ActiveChatContext = createContext<ActiveChatContextValue | null>(null);
@@ -106,70 +109,76 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     regenerate,
     resumeStream,
     addToolApprovalResponse,
-  } = useChat<ChatMessage>({
-    id: chatId,
-    messages: initialMessages,
-    generateId: generateUUID,
-    sendAutomaticallyWhen: ({ messages: currentMessages }) => {
-      const lastMessage = currentMessages.at(-1);
-      return (
-        lastMessage?.parts?.some(
-          (part) =>
-            "state" in part &&
-            part.state === "approval-responded" &&
-            "approval" in part &&
-            (part.approval as { approved?: boolean })?.approved === true
-        ) ?? false
-      );
-    },
-    transport: new DefaultChatTransport({
-      api: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat`,
-      fetch: fetchWithErrorHandlers,
-      prepareSendMessagesRequest(request) {
-        const lastMessage = request.messages.at(-1);
-        const isToolApprovalContinuation =
-          lastMessage?.role !== "user" ||
-          request.messages.some((msg) =>
-            msg.parts?.some((part) => {
-              const state = (part as { state?: string }).state;
-              return (
-                state === "approval-responded" || state === "output-denied"
-              );
-            })
-          );
-
-        return {
-          body: {
-            id: request.id,
-            ...(isToolApprovalContinuation
-              ? { messages: request.messages }
-              : { message: lastMessage }),
-            selectedChatModel: currentModelIdRef.current,
-            selectedVisibilityType: visibility,
-            ...request.body,
-          },
-        };
+    toolInterrupt,
+  } = useInterruptions((errorHandler) =>
+    // biome-ignore lint/correctness/useHookAtTopLevel: useInterruptions invokes this callback synchronously during render, so useChat is effectively at the top level.
+    useChat<ChatMessage>({
+      id: chatId,
+      messages: initialMessages,
+      generateId: generateUUID,
+      sendAutomaticallyWhen: ({ messages: currentMessages }) => {
+        const lastMessage = currentMessages.at(-1);
+        return (
+          lastMessage?.parts?.some(
+            (part) =>
+              "state" in part &&
+              part.state === "approval-responded" &&
+              "approval" in part &&
+              (part.approval as { approved?: boolean })?.approved === true
+          ) ?? false
+        );
       },
-    }),
-    onData: (dataPart) => {
-      setDataStream((ds) => (ds ? [...ds, dataPart] : []));
-    },
-    onFinish: () => {
-      mutate(unstable_serialize(getChatHistoryPaginationKey));
-    },
-    onError: (error) => {
-      if (error.message?.includes("AI Gateway requires a valid credit card")) {
-        setShowCreditCardAlert(true);
-      } else if (error instanceof ChatbotError) {
-        toast({ type: "error", description: error.message });
-      } else {
-        toast({
-          type: "error",
-          description: error.message || "Oops, an error occurred!",
-        });
-      }
-    },
-  });
+      transport: new DefaultChatTransport({
+        api: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat`,
+        fetch: fetchWithErrorHandlers,
+        prepareSendMessagesRequest(request) {
+          const lastMessage = request.messages.at(-1);
+          const isToolApprovalContinuation =
+            lastMessage?.role !== "user" ||
+            request.messages.some((msg) =>
+              msg.parts?.some((part) => {
+                const state = (part as { state?: string }).state;
+                return (
+                  state === "approval-responded" || state === "output-denied"
+                );
+              })
+            );
+
+          return {
+            body: {
+              id: request.id,
+              ...(isToolApprovalContinuation
+                ? { messages: request.messages }
+                : { message: lastMessage }),
+              selectedChatModel: currentModelIdRef.current,
+              selectedVisibilityType: visibility,
+              ...request.body,
+            },
+          };
+        },
+      }),
+      onData: (dataPart) => {
+        setDataStream((ds) => (ds ? [...ds, dataPart] : []));
+      },
+      onFinish: () => {
+        mutate(unstable_serialize(getChatHistoryPaginationKey));
+      },
+      onError: errorHandler((error) => {
+        if (
+          error.message?.includes("AI Gateway requires a valid credit card")
+        ) {
+          setShowCreditCardAlert(true);
+        } else if (error instanceof ChatbotError) {
+          toast({ type: "error", description: error.message });
+        } else {
+          toast({
+            type: "error",
+            description: error.message || "Oops, an error occurred!",
+          });
+        }
+      }),
+    })
+  );
 
   const loadedChatIds = useRef(new Set<string>());
 
@@ -264,6 +273,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setCurrentModelId,
       showCreditCardAlert,
       setShowCreditCardAlert,
+      toolInterrupt,
     }),
     [
       chatId,
@@ -282,6 +292,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       votes,
       currentModelId,
       showCreditCardAlert,
+      toolInterrupt,
     ]
   );
 

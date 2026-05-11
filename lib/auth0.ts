@@ -16,3 +16,8 @@ export const auth0 = new Auth0Client({
   appBaseUrl: requireEnv("APP_BASE_URL"),
   enableConnectAccountEndpoint: true,
 });
+
+export const getRefreshToken = async () => {
+  const session = await auth0.getSession();
+  return session?.tokenSet?.refreshToken;
+};

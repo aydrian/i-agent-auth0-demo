@@ -15,6 +15,7 @@ import {
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
+import { GmailMessages } from "./gmail-messages";
 import { SparklesIcon } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
@@ -211,6 +212,35 @@ const PurePreviewMessage = ({
                     Allow
                   </button>
                 </div>
+              )}
+            </ToolContent>
+          </Tool>
+        </div>
+      );
+    }
+
+    if (type === "tool-gmailSearch") {
+      const { toolCallId, state } = part;
+      const widthClass = "w-[min(100%,450px)]";
+
+      if (state === "output-available") {
+        return (
+          <div className={widthClass} key={toolCallId}>
+            <GmailMessages result={part.output} />
+          </div>
+        );
+      }
+
+      return (
+        <div className={widthClass} key={toolCallId}>
+          <Tool className="w-full" defaultOpen={true}>
+            <ToolHeader state={state} type="tool-gmailSearch" />
+            <ToolContent>
+              {(state === "input-available" || state === "input-streaming") && (
+                <ToolInput input={part.input} />
+              )}
+              {state === "output-error" && (
+                <ToolOutput errorText={part.errorText} output={undefined} />
               )}
             </ToolContent>
           </Tool>

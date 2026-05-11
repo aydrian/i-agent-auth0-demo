@@ -1,3 +1,5 @@
+import { Auth0Interrupt } from "@auth0/ai/interrupts";
+import { InterruptionPrefix, invokeTools } from "@auth0/ai-vercel/interrupts";
 import { geolocation, ipAddress } from "@vercel/functions";
 import {
   convertToModelMessages,
@@ -22,6 +24,7 @@ import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
+import { gmailSearch } from "@/lib/ai/tools/gmail-search";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import { auth0 } from "@/lib/auth0";
@@ -191,6 +194,29 @@ export async function POST(request: Request) {
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
       execute: async ({ writer: dataStream }) => {
+        const tools = {
+          getWeather,
+          gmailSearch,
+          createDocument: createDocument({
+            session,
+            dataStream,
+            modelId: chatModel,
+          }),
+          editDocument: editDocument({ dataStream, session }),
+          updateDocument: updateDocument({
+            session,
+            dataStream,
+            modelId: chatModel,
+          }),
+          requestSuggestions: requestSuggestions({
+            session,
+            dataStream,
+            modelId: chatModel,
+          }),
+        };
+
+        await invokeTools({ messages: uiMessages, tools });
+
         const result = streamText({
           model: getLanguageModel(chatModel),
           system: systemPrompt({ requestHints, supportsTools }),
@@ -201,6 +227,7 @@ export async function POST(request: Request) {
               ? []
               : [
                   "getWeather",
+                  "gmailSearch",
                   "createDocument",
                   "editDocument",
                   "updateDocument",
@@ -214,24 +241,27 @@ export async function POST(request: Request) {
               openai: { reasoningEffort: modelConfig.reasoningEffort },
             }),
           },
-          tools: {
-            getWeather,
-            createDocument: createDocument({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
-            editDocument: editDocument({ dataStream, session }),
-            updateDocument: updateDocument({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
-            requestSuggestions: requestSuggestions({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
+          tools,
+          onStepFinish: (step) => {
+            for (const part of step.content) {
+              if (
+                part.type === "tool-error" &&
+                Auth0Interrupt.isInterrupt(part.error)
+              ) {
+                const interruptError = part.error as unknown as {
+                  message?: string;
+                };
+                throw Object.assign(
+                  new Error(interruptError?.message ?? "Auth0 interrupt"),
+                  {
+                    cause: part.error,
+                    toolCallId: part.toolCallId,
+                    toolArgs: part.input,
+                    toolName: part.toolName,
+                  }
+                );
+              }
+            }
           },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,
@@ -296,6 +326,27 @@ export async function POST(request: Request) {
         ) {
           return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
         }
+        const err = error as {
+          cause?: unknown;
+          toolCallId?: string;
+          toolArgs?: unknown;
+          toolName?: string;
+        };
+        if (Auth0Interrupt.isInterrupt(err?.cause)) {
+          const interrupt = err.cause as Auth0Interrupt & {
+            toJSON: () => Record<string, unknown>;
+          };
+          const serializable = {
+            ...interrupt.toJSON(),
+            toolCall: {
+              id: err.toolCallId,
+              args: err.toolArgs,
+              name: err.toolName,
+            },
+          };
+          return `${InterruptionPrefix}${JSON.stringify(serializable)}`;
+        }
+        console.error("Chat stream error:", error);
         return "Oops, an error occurred!";
       },
     });
