@@ -1,7 +1,8 @@
 "use client";
 
 import { useUser } from "@auth0/nextjs-auth0";
-import { ChevronUp } from "lucide-react";
+import { ChevronUp, User } from "lucide-react";
+import Link from "next/link";
 import { useTheme } from "next-themes";
 import {
   DropdownMenu,
@@ -81,6 +82,15 @@ export function SidebarUserNav({ user }: { user: AppUser }) {
               }
             >
               {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild data-testid="user-nav-item-profile">
+              <Link
+                className="w-full cursor-pointer text-[13px]"
+                href="/profile"
+              >
+                <User className="size-4" />
+                Profile
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild data-testid="user-nav-item-auth">

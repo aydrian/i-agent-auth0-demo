@@ -14,4 +14,5 @@ export const auth0 = new Auth0Client({
   clientSecret: requireEnv("AUTH0_CLIENT_SECRET"),
   secret: requireEnv("AUTH0_SECRET"),
   appBaseUrl: requireEnv("APP_BASE_URL"),
+  enableConnectAccountEndpoint: true,
 });
