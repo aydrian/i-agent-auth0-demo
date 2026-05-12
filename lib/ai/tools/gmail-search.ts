@@ -32,7 +32,7 @@ function getHeader(
 export const gmailSearch = withGmailRead(
   tool({
     description:
-      "Search the signed-in user's Gmail inbox. Use Gmail search operators (e.g., 'from:alice', 'subject:invoice', 'is:unread', 'newer_than:7d'). Returns matching messages with sender, subject, and a short snippet.",
+      "Search the user's Gmail inbox. Use this whenever the user asks about their email, inbox, messages, senders, subjects, or anything that might live in their email. Translate the user's natural-language question into Gmail search operators (for example: 'from:alice', 'subject:invoice', 'is:unread', 'newer_than:7d'). Returns matching messages with sender, subject, date, and a short snippet.",
     inputSchema: z.object({
       query: z
         .string()

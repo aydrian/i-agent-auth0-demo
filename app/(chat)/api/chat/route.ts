@@ -1,4 +1,5 @@
 import { Auth0Interrupt } from "@auth0/ai/interrupts";
+import { setAIContext } from "@auth0/ai-vercel";
 import { InterruptionPrefix, invokeTools } from "@auth0/ai-vercel/interrupts";
 import { geolocation, ipAddress } from "@vercel/functions";
 import {
@@ -73,6 +74,8 @@ export async function POST(request: Request) {
   try {
     const { id, message, messages, selectedChatModel, selectedVisibilityType } =
       requestBody;
+
+    setAIContext({ threadID: id });
 
     const [, session] = await Promise.all([
       checkBotId().catch(() => null),
@@ -188,6 +191,7 @@ export async function POST(request: Request) {
     const capabilities = modelCapabilities[chatModel];
     const isReasoningModel = capabilities?.reasoning === true;
     const supportsTools = capabilities?.tools === true;
+    const toolsActive = !(isReasoningModel && !supportsTools);
 
     const modelMessages = await convertToModelMessages(uiMessages);
 
@@ -217,22 +221,23 @@ export async function POST(request: Request) {
 
         await invokeTools({ messages: uiMessages, tools });
 
+        let capturedInterrupt: Error | null = null;
+
         const result = streamText({
           model: getLanguageModel(chatModel),
-          system: systemPrompt({ requestHints, supportsTools }),
+          system: systemPrompt({ requestHints, toolsActive }),
           messages: modelMessages,
           stopWhen: stepCountIs(5),
-          experimental_activeTools:
-            isReasoningModel && !supportsTools
-              ? []
-              : [
-                  "getWeather",
-                  "gmailSearch",
-                  "createDocument",
-                  "editDocument",
-                  "updateDocument",
-                  "requestSuggestions",
-                ],
+          experimental_activeTools: toolsActive
+            ? [
+                "getWeather",
+                "gmailSearch",
+                "createDocument",
+                "editDocument",
+                "updateDocument",
+                "requestSuggestions",
+              ]
+            : [],
           providerOptions: {
             ...(modelConfig?.gatewayOrder && {
               gateway: { order: modelConfig.gatewayOrder },
@@ -246,12 +251,13 @@ export async function POST(request: Request) {
             for (const part of step.content) {
               if (
                 part.type === "tool-error" &&
-                Auth0Interrupt.isInterrupt(part.error)
+                Auth0Interrupt.isInterrupt(part.error) &&
+                !capturedInterrupt
               ) {
                 const interruptError = part.error as unknown as {
                   message?: string;
                 };
-                throw Object.assign(
+                capturedInterrupt = Object.assign(
                   new Error(interruptError?.message ?? "Auth0 interrupt"),
                   {
                     cause: part.error,
@@ -277,6 +283,11 @@ export async function POST(request: Request) {
           const title = await titlePromise;
           dataStream.write({ type: "data-chat-title", data: title });
           updateChatTitleById({ chatId: id, title });
+        }
+
+        await result.finishReason;
+        if (capturedInterrupt) {
+          throw capturedInterrupt;
         }
       },
       generateId: generateUUID,
@@ -331,13 +342,23 @@ export async function POST(request: Request) {
           toolCallId?: string;
           toolArgs?: unknown;
           toolName?: string;
+          message?: string;
         };
-        if (Auth0Interrupt.isInterrupt(err?.cause)) {
-          const interrupt = err.cause as Auth0Interrupt & {
-            toJSON: () => Record<string, unknown>;
-          };
+        if (err?.message?.startsWith(InterruptionPrefix)) {
+          return err.message;
+        }
+        const interrupt = Auth0Interrupt.isInterrupt(err?.cause)
+          ? err.cause
+          : Auth0Interrupt.isInterrupt(error)
+            ? error
+            : null;
+        if (interrupt) {
           const serializable = {
-            ...interrupt.toJSON(),
+            ...(
+              interrupt as Auth0Interrupt & {
+                toJSON: () => Record<string, unknown>;
+              }
+            ).toJSON(),
             toolCall: {
               id: err.toolCallId,
               args: err.toolArgs,

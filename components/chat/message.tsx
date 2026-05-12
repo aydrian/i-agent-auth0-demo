@@ -224,6 +224,21 @@ const PurePreviewMessage = ({
       const widthClass = "w-[min(100%,450px)]";
 
       if (state === "output-available") {
+        const output = part.output as
+          | { continueInterruption?: boolean }
+          | undefined;
+        if (output?.continueInterruption) {
+          return (
+            <div className={widthClass} key={toolCallId}>
+              <Tool className="w-full" defaultOpen={true}>
+                <ToolHeader state="input-available" type="tool-gmailSearch" />
+                <ToolContent>
+                  <ToolInput input={part.input} />
+                </ToolContent>
+              </Tool>
+            </div>
+          );
+        }
         return (
           <div className={widthClass} key={toolCallId}>
             <GmailMessages result={part.output} />

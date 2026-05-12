@@ -4,7 +4,9 @@ import { Mail } from "lucide-react";
 import type { GmailSearchOutput } from "@/lib/ai/tools/gmail-search";
 
 export function GmailMessages({ result }: { result: GmailSearchOutput }) {
-  const { query, messagesCount, messages } = result;
+  const query = result?.query ?? "";
+  const messages = result?.messages ?? [];
+  const messagesCount = result?.messagesCount ?? messages.length;
 
   return (
     <div className="rounded-xl border border-border/40 bg-gradient-to-br from-background to-muted/40 p-4 shadow-[var(--shadow-card)]">
