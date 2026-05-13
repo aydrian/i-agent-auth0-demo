@@ -2,17 +2,22 @@
 
 import { TokenVaultInterrupt } from "@auth0/ai/interrupts";
 import type { Auth0InterruptionUI } from "@auth0/ai-vercel";
-import { Mail } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Loader2, LockIcon } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 type Props = {
-  interrupt: Auth0InterruptionUI | null | undefined;
-  onFinish?: () => void;
+  interrupt: Auth0InterruptionUI;
+  label?: string;
+  icon?: ReactNode;
 };
 
-export function TokenVaultInterruptHandler({ interrupt, onFinish }: Props) {
+export function ToolTokenVaultInterrupt({
+  interrupt,
+  label = "this service",
+  icon,
+}: Props) {
   const [popup, setPopup] = useState<Window | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isWaiting, setIsWaiting] = useState(false);
 
   useEffect(() => {
     if (!popup) {
@@ -21,12 +26,9 @@ export function TokenVaultInterruptHandler({ interrupt, onFinish }: Props) {
     const interval = setInterval(() => {
       if (popup.closed) {
         clearInterval(interval);
-        setIsLoading(false);
+        setIsWaiting(false);
         setPopup(null);
-        if (onFinish) {
-          onFinish();
-        } else if (
-          interrupt &&
+        if (
           TokenVaultInterrupt.isInterrupt(interrupt) &&
           typeof interrupt.resume === "function"
         ) {
@@ -35,10 +37,10 @@ export function TokenVaultInterruptHandler({ interrupt, onFinish }: Props) {
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [popup, onFinish, interrupt]);
+  }, [popup, interrupt]);
 
   const startAuth = useCallback(() => {
-    if (!interrupt || !TokenVaultInterrupt.isInterrupt(interrupt)) {
+    if (!TokenVaultInterrupt.isInterrupt(interrupt)) {
       return;
     }
     const params = new URLSearchParams({
@@ -58,34 +60,44 @@ export function TokenVaultInterruptHandler({ interrupt, onFinish }: Props) {
       return;
     }
     setPopup(w);
-    setIsLoading(true);
+    setIsWaiting(true);
   }, [interrupt]);
 
-  if (!interrupt || !TokenVaultInterrupt.isInterrupt(interrupt)) {
+  if (!TokenVaultInterrupt.isInterrupt(interrupt)) {
     return null;
   }
 
   return (
-    <div className="w-[min(100%,450px)]">
-      <fieldset className="flex w-full flex-col items-start justify-between gap-3 rounded-xl border border-border/60 bg-card p-4 sm:flex-row sm:items-center">
-        <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-full bg-muted">
-            <Mail className="size-4 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="font-semibold text-sm">Authorization required</p>
-            <p className="text-muted-foreground text-xs">{interrupt.message}</p>
-          </div>
+    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-[var(--shadow-card)]">
+      <div className="flex items-start gap-3">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+          {isWaiting ? (
+            <Loader2 className="size-4 animate-spin text-muted-foreground" />
+          ) : (
+            (icon ?? <LockIcon className="size-4 text-muted-foreground" />)
+          )}
         </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-sm">
+            {isWaiting ? "Waiting for authorization…" : "Authorization needed"}
+          </p>
+          <p className="mt-1 text-muted-foreground text-xs">
+            {isWaiting
+              ? "Complete the sign-in in the popup window to continue."
+              : `Connect your account to let the assistant access ${label}.`}
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 flex justify-end">
         <button
           className="rounded-md bg-primary px-3 py-1.5 text-primary-foreground text-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
-          disabled={isLoading}
+          disabled={isWaiting}
           onClick={startAuth}
           type="button"
         >
-          {isLoading ? "Waiting…" : "Authorize"}
+          {isWaiting ? "Waiting…" : "Authorize"}
         </button>
-      </fieldset>
+      </div>
     </div>
   );
 }

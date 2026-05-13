@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { TokenVaultInterruptHandler } from "@/components/auth0-ai/token-vault-interrupt-handler";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,7 +46,6 @@ export function ChatShell() {
     setCurrentModelId,
     showCreditCardAlert,
     setShowCreditCardAlert,
-    toolInterrupt,
   } = useActiveChat();
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(
@@ -108,12 +106,6 @@ export function ChatShell() {
               status={status}
               votes={votes}
             />
-
-            {toolInterrupt && (
-              <div className="mx-auto w-full max-w-4xl px-2 md:px-4">
-                <TokenVaultInterruptHandler interrupt={toolInterrupt} />
-              </div>
-            )}
 
             <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
               {!isReadonly && (

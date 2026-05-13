@@ -223,11 +223,26 @@ export async function POST(request: Request) {
 
         let capturedInterrupt: Error | null = null;
 
+        const stopOnAuth0Interrupt = ({
+          steps,
+        }: {
+          steps: ReadonlyArray<{ content: ReadonlyArray<unknown> }>;
+        }) =>
+          steps.some((step) =>
+            step.content.some((p) => {
+              const part = p as { type?: string; error?: unknown };
+              return (
+                part.type === "tool-error" &&
+                Auth0Interrupt.isInterrupt(part.error)
+              );
+            })
+          );
+
         const result = streamText({
           model: getLanguageModel(chatModel),
           system: systemPrompt({ requestHints, toolsActive }),
           messages: modelMessages,
-          stopWhen: stepCountIs(5),
+          stopWhen: [stepCountIs(5), stopOnAuth0Interrupt],
           experimental_activeTools: toolsActive
             ? [
                 "getWeather",
