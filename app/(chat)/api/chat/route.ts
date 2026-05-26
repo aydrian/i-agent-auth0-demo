@@ -230,7 +230,35 @@ export async function POST(request: Request) {
           }),
         };
 
-        await invokeTools({ messages: uiMessages, tools });
+        await invokeTools({
+          messages: uiMessages,
+          tools,
+          onToolResult: (message) => {
+            const lastPart = message.parts?.at(-1) as
+              | {
+                  type?: string;
+                  toolCallId?: string;
+                  output?: { state?: string; result?: unknown };
+                }
+              | undefined;
+            if (
+              !lastPart?.type?.startsWith("tool-") ||
+              !lastPart.toolCallId ||
+              lastPart.output?.state !== "output-available" ||
+              !("result" in (lastPart.output ?? {}))
+            ) {
+              return Promise.resolve();
+            }
+            const realResult = lastPart.output.result;
+            dataStream.write({
+              type: "tool-output-available",
+              toolCallId: lastPart.toolCallId,
+              output: realResult,
+            });
+            (lastPart as { output: unknown }).output = realResult;
+            return Promise.resolve();
+          },
+        });
 
         let capturedInterrupt: Error | null = null;
 
