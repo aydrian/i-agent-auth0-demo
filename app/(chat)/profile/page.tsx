@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { ProfileContent } from "@/components/profile/profile-content";
-import { fetchConnectedAccounts } from "@/lib/actions/profile";
 import { auth0 } from "@/lib/auth0";
 
 export default async function ProfilePage() {
@@ -9,8 +8,6 @@ export default async function ProfilePage() {
   if (!session?.user) {
     redirect("/auth/login");
   }
-
-  const initialAccounts = await fetchConnectedAccounts();
 
   return (
     <div className="h-dvh overflow-y-auto">
@@ -22,7 +19,7 @@ export default async function ProfilePage() {
           </p>
         </div>
 
-        <ProfileContent initialAccounts={initialAccounts} user={session.user} />
+        <ProfileContent user={session.user} />
       </div>
     </div>
   );

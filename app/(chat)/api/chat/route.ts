@@ -132,11 +132,22 @@ export async function POST(request: Request) {
         messages.flatMap(
           (m) =>
             m.parts
-              ?.filter(
-                (p: Record<string, unknown>) =>
+              ?.filter((p: Record<string, unknown>) => {
+                if (
                   p.state === "approval-responded" ||
                   p.state === "output-denied"
-              )
+                ) {
+                  return true;
+                }
+                if (
+                  p.state === "output-available" &&
+                  (p.output as { continueInterruption?: boolean } | undefined)
+                    ?.continueInterruption === true
+                ) {
+                  return true;
+                }
+                return false;
+              })
               .map((p: Record<string, unknown>) => [
                 String(p.toolCallId ?? ""),
                 p,
@@ -242,7 +253,7 @@ export async function POST(request: Request) {
           model: getLanguageModel(chatModel),
           system: systemPrompt({ requestHints, toolsActive }),
           messages: modelMessages,
-          stopWhen: [stepCountIs(5), stopOnAuth0Interrupt],
+          stopWhen: [stepCountIs(3), stopOnAuth0Interrupt],
           experimental_activeTools: toolsActive
             ? [
                 "getWeather",
@@ -351,6 +362,20 @@ export async function POST(request: Request) {
           )
         ) {
           return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
+        }
+        const rateLimited = error as {
+          statusCode?: number;
+          type?: string;
+          message?: string;
+        };
+        if (
+          rateLimited?.statusCode === 429 ||
+          rateLimited?.type === "rate_limit_exceeded" ||
+          rateLimited?.message?.includes(
+            "Free credits temporarily have rate limits"
+          )
+        ) {
+          return "We're being rate-limited by the AI Gateway. Wait a moment and try again, or add billing at https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dtop-up to remove the free-tier limits.";
         }
         const err = error as {
           cause?: unknown;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   type ConnectedAccount,
   fetchConnectedAccounts,
@@ -9,16 +9,11 @@ import type { AppUser } from "@/lib/auth0-types";
 import { ConnectedAccountsCard } from "./connected-accounts-card";
 import { UserInfoCard } from "./user-info-card";
 
-export function ProfileContent({
-  user,
-  initialAccounts,
-}: {
-  user: AppUser;
-  initialAccounts: ConnectedAccount[];
-}) {
-  const [connectedAccounts, setConnectedAccounts] =
-    useState<ConnectedAccount[]>(initialAccounts);
-  const [loading, setLoading] = useState(false);
+export function ProfileContent({ user }: { user: AppUser }) {
+  const [connectedAccounts, setConnectedAccounts] = useState<
+    ConnectedAccount[]
+  >([]);
+  const [loading, setLoading] = useState(true);
 
   const loadConnectedAccounts = async () => {
     setLoading(true);
@@ -31,6 +26,10 @@ export function ProfileContent({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadConnectedAccounts();
+  }, []);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

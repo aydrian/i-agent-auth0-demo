@@ -84,6 +84,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   const [input, setInput] = useState("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
+  const autoSentToolCallIdsRef = useRef(new Set<string>());
 
   const { data: chatData, isLoading } = useSWR(
     isNewChat
@@ -118,15 +119,38 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       generateId: generateUUID,
       sendAutomaticallyWhen: ({ messages: currentMessages }) => {
         const lastMessage = currentMessages.at(-1);
-        return (
-          lastMessage?.parts?.some(
-            (part) =>
-              "state" in part &&
-              part.state === "approval-responded" &&
-              "approval" in part &&
-              (part.approval as { approved?: boolean })?.approved === true
-          ) ?? false
-        );
+        if (!lastMessage?.parts) {
+          return false;
+        }
+        for (const part of lastMessage.parts) {
+          if (!("state" in part)) {
+            continue;
+          }
+          const toolCallId = (part as { toolCallId?: string }).toolCallId;
+          const isApprovalResponded =
+            part.state === "approval-responded" &&
+            "approval" in part &&
+            (part.approval as { approved?: boolean })?.approved === true;
+          const isContinueInterruption =
+            part.state === "output-available" &&
+            typeof (part as { type?: string }).type === "string" &&
+            (part as { type: string }).type.startsWith("tool-") &&
+            (
+              (part as { output?: { continueInterruption?: boolean } })
+                .output?.continueInterruption
+            ) === true;
+          if (!(isApprovalResponded || isContinueInterruption)) {
+            continue;
+          }
+          if (toolCallId && autoSentToolCallIdsRef.current.has(toolCallId)) {
+            continue;
+          }
+          if (toolCallId) {
+            autoSentToolCallIdsRef.current.add(toolCallId);
+          }
+          return true;
+        }
+        return false;
       },
       transport: new DefaultChatTransport({
         api: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat`,
