@@ -1,5 +1,9 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
+import { TokenVaultInterrupt } from "@auth0/ai/interrupts";
+import { Mail } from "lucide-react";
+import { ToolTokenVaultInterrupt } from "@/components/auth0-ai/tool-token-vault-interrupt";
+import { useActiveChat } from "@/hooks/use-active-chat";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
@@ -15,6 +19,7 @@ import {
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
+import { GmailMessages } from "./gmail-messages";
 import { SparklesIcon } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
@@ -49,6 +54,7 @@ const PurePreviewMessage = ({
   );
 
   useDataStream();
+  const { toolInterrupt } = useActiveChat();
 
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
@@ -211,6 +217,72 @@ const PurePreviewMessage = ({
                     Allow
                   </button>
                 </div>
+              )}
+            </ToolContent>
+          </Tool>
+        </div>
+      );
+    }
+
+    if (type === "tool-gmailSearch") {
+      const { toolCallId, state } = part;
+      const widthClass = "w-[min(100%,450px)]";
+
+      const interruptToolCallId =
+        (toolInterrupt as { toolCall?: { id?: string } } | null)?.toolCall
+          ?.id ?? toolInterrupt?.tool?.id;
+      const matchedInterrupt =
+        toolInterrupt &&
+        TokenVaultInterrupt.isInterrupt(toolInterrupt) &&
+        interruptToolCallId === toolCallId
+          ? toolInterrupt
+          : null;
+
+      if (matchedInterrupt) {
+        return (
+          <div className={widthClass} key={toolCallId}>
+            <ToolTokenVaultInterrupt
+              icon={<Mail className="size-4 text-muted-foreground" />}
+              interrupt={matchedInterrupt}
+              label="Gmail"
+            />
+          </div>
+        );
+      }
+
+      if (state === "output-available") {
+        const output = part.output as
+          | { continueInterruption?: boolean }
+          | undefined;
+        if (output?.continueInterruption) {
+          return (
+            <div className={widthClass} key={toolCallId}>
+              <Tool className="w-full" defaultOpen={true}>
+                <ToolHeader state="input-available" type="tool-gmailSearch" />
+                <ToolContent>
+                  <ToolInput input={part.input} />
+                </ToolContent>
+              </Tool>
+            </div>
+          );
+        }
+        return (
+          <div className={widthClass} key={toolCallId}>
+            <GmailMessages result={part.output} />
+          </div>
+        );
+      }
+
+      return (
+        <div className={widthClass} key={toolCallId}>
+          <Tool className="w-full" defaultOpen={true}>
+            <ToolHeader state={state} type="tool-gmailSearch" />
+            <ToolContent>
+              {(state === "input-available" || state === "input-streaming") && (
+                <ToolInput input={part.input} />
+              )}
+              {state === "output-error" && (
+                <ToolOutput errorText={part.errorText} output={undefined} />
               )}
             </ToolContent>
           </Tool>

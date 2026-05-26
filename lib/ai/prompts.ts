@@ -1,11 +1,29 @@
 import type { Geo } from "@vercel/functions";
 import type { ArtifactKind } from "@/components/chat/artifact";
 
+export const userDataToolsPrompt = `
+You have tools that can access the user's own data. Use them instead of refusing.
+
+**\`gmailSearch\`** — searches the signed-in user's Gmail inbox.
+- Call this whenever the user asks about their email, inbox, messages, senders, subjects, or anything that might live in their email. Do NOT reply that you lack access — the tool is how you get access.
+- Translate the user's natural-language question into Gmail search operators. Examples:
+  - "emails about AI" → \`"AI" OR subject:AI\`
+  - "from Jane last week" → \`from:jane newer_than:7d\`
+  - "unread invoices" → \`is:unread subject:invoice\`
+- If the tool raises an authorization error, the app will prompt the user to connect Google. Don't apologize or narrate — just let it surface.
+- After gmailSearch returns results, the UI already renders the emails as cards. Respond with ONE short sentence confirming what was found (e.g. "Found 7 emails about AI.") and STOP.
+- NEVER list the emails as bullets, repeat subjects/senders/snippets, or quote message content — the user can already see all of that in the cards.
+- Do NOT volunteer follow-up suggestions like "I can narrow these to unread/recent/etc." Only respond to follow-up requests the user actually makes.
+
+**\`getWeather\`** — current weather at a location.
+- Call this when the user asks about weather. Accept either a city name or latitude/longitude.
+`;
+
 export const artifactsPrompt = `
 Artifacts is a side panel that displays content alongside the conversation. It supports scripts (code), documents (text), and spreadsheets. Changes appear in real-time.
 
-CRITICAL RULES:
-1. Only call ONE tool per response. After calling any create/edit/update tool, STOP. Do not chain tools.
+CRITICAL RULES (apply to artifact tools only — createDocument/editDocument/updateDocument/requestSuggestions):
+1. Only call ONE artifact tool per response. After calling any create/edit/update tool, STOP. Do not chain artifact tools.
 2. After creating or editing an artifact, NEVER output its content in chat. The user can already see it. Respond with only a 1-2 sentence confirmation.
 
 **When to use \`createDocument\`:**
@@ -65,18 +83,18 @@ About the origin of user's request:
 
 export const systemPrompt = ({
   requestHints,
-  supportsTools,
+  toolsActive,
 }: {
   requestHints: RequestHints;
-  supportsTools: boolean;
+  toolsActive: boolean;
 }) => {
   const requestPrompt = getRequestPromptFromHints(requestHints);
 
-  if (!supportsTools) {
+  if (!toolsActive) {
     return `${regularPrompt}\n\n${requestPrompt}`;
   }
 
-  return `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}`;
+  return `${regularPrompt}\n\n${requestPrompt}\n\n${userDataToolsPrompt}\n\n${artifactsPrompt}`;
 };
 
 export const codePrompt = `

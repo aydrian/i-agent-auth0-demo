@@ -1,3 +1,6 @@
+import { Auth0Interrupt } from "@auth0/ai/interrupts";
+import { setAIContext } from "@auth0/ai-vercel";
+import { InterruptionPrefix, invokeTools } from "@auth0/ai-vercel/interrupts";
 import { geolocation, ipAddress } from "@vercel/functions";
 import {
   convertToModelMessages,
@@ -22,6 +25,7 @@ import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
+import { gmailSearch } from "@/lib/ai/tools/gmail-search";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import { auth0 } from "@/lib/auth0";
@@ -70,6 +74,8 @@ export async function POST(request: Request) {
   try {
     const { id, message, messages, selectedChatModel, selectedVisibilityType } =
       requestBody;
+
+    setAIContext({ threadID: id });
 
     const [, session] = await Promise.all([
       checkBotId().catch(() => null),
@@ -126,11 +132,22 @@ export async function POST(request: Request) {
         messages.flatMap(
           (m) =>
             m.parts
-              ?.filter(
-                (p: Record<string, unknown>) =>
+              ?.filter((p: Record<string, unknown>) => {
+                if (
                   p.state === "approval-responded" ||
                   p.state === "output-denied"
-              )
+                ) {
+                  return true;
+                }
+                if (
+                  p.state === "output-available" &&
+                  (p.output as { continueInterruption?: boolean } | undefined)
+                    ?.continueInterruption === true
+                ) {
+                  return true;
+                }
+                return false;
+              })
               .map((p: Record<string, unknown>) => [
                 String(p.toolCallId ?? ""),
                 p,
@@ -185,27 +202,96 @@ export async function POST(request: Request) {
     const capabilities = modelCapabilities[chatModel];
     const isReasoningModel = capabilities?.reasoning === true;
     const supportsTools = capabilities?.tools === true;
+    const toolsActive = !(isReasoningModel && !supportsTools);
 
     const modelMessages = await convertToModelMessages(uiMessages);
 
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
       execute: async ({ writer: dataStream }) => {
+        const tools = {
+          getWeather,
+          gmailSearch,
+          createDocument: createDocument({
+            session,
+            dataStream,
+            modelId: chatModel,
+          }),
+          editDocument: editDocument({ dataStream, session }),
+          updateDocument: updateDocument({
+            session,
+            dataStream,
+            modelId: chatModel,
+          }),
+          requestSuggestions: requestSuggestions({
+            session,
+            dataStream,
+            modelId: chatModel,
+          }),
+        };
+
+        await invokeTools({
+          messages: uiMessages,
+          tools,
+          onToolResult: (message) => {
+            const lastPart = message.parts?.at(-1) as
+              | {
+                  type?: string;
+                  toolCallId?: string;
+                  output?: { state?: string; result?: unknown };
+                }
+              | undefined;
+            if (
+              !lastPart?.type?.startsWith("tool-") ||
+              !lastPart.toolCallId ||
+              lastPart.output?.state !== "output-available" ||
+              !("result" in (lastPart.output ?? {}))
+            ) {
+              return Promise.resolve();
+            }
+            const realResult = lastPart.output.result;
+            dataStream.write({
+              type: "tool-output-available",
+              toolCallId: lastPart.toolCallId,
+              output: realResult,
+            });
+            (lastPart as { output: unknown }).output = realResult;
+            return Promise.resolve();
+          },
+        });
+
+        let capturedInterrupt: Error | null = null;
+
+        const stopOnAuth0Interrupt = ({
+          steps,
+        }: {
+          steps: ReadonlyArray<{ content: readonly unknown[] }>;
+        }) =>
+          steps.some((step) =>
+            step.content.some((p) => {
+              const part = p as { type?: string; error?: unknown };
+              return (
+                part.type === "tool-error" &&
+                Auth0Interrupt.isInterrupt(part.error)
+              );
+            })
+          );
+
         const result = streamText({
           model: getLanguageModel(chatModel),
-          system: systemPrompt({ requestHints, supportsTools }),
+          system: systemPrompt({ requestHints, toolsActive }),
           messages: modelMessages,
-          stopWhen: stepCountIs(5),
-          experimental_activeTools:
-            isReasoningModel && !supportsTools
-              ? []
-              : [
-                  "getWeather",
-                  "createDocument",
-                  "editDocument",
-                  "updateDocument",
-                  "requestSuggestions",
-                ],
+          stopWhen: [stepCountIs(3), stopOnAuth0Interrupt],
+          experimental_activeTools: toolsActive
+            ? [
+                "getWeather",
+                "gmailSearch",
+                "createDocument",
+                "editDocument",
+                "updateDocument",
+                "requestSuggestions",
+              ]
+            : [],
           providerOptions: {
             ...(modelConfig?.gatewayOrder && {
               gateway: { order: modelConfig.gatewayOrder },
@@ -214,24 +300,28 @@ export async function POST(request: Request) {
               openai: { reasoningEffort: modelConfig.reasoningEffort },
             }),
           },
-          tools: {
-            getWeather,
-            createDocument: createDocument({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
-            editDocument: editDocument({ dataStream, session }),
-            updateDocument: updateDocument({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
-            requestSuggestions: requestSuggestions({
-              session,
-              dataStream,
-              modelId: chatModel,
-            }),
+          tools,
+          onStepFinish: (step) => {
+            for (const part of step.content) {
+              if (
+                part.type === "tool-error" &&
+                Auth0Interrupt.isInterrupt(part.error) &&
+                !capturedInterrupt
+              ) {
+                const interruptError = part.error as unknown as {
+                  message?: string;
+                };
+                capturedInterrupt = Object.assign(
+                  new Error(interruptError?.message ?? "Auth0 interrupt"),
+                  {
+                    cause: part.error,
+                    toolCallId: part.toolCallId,
+                    toolArgs: part.input,
+                    toolName: part.toolName,
+                  }
+                );
+              }
+            }
           },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,
@@ -247,6 +337,11 @@ export async function POST(request: Request) {
           const title = await titlePromise;
           dataStream.write({ type: "data-chat-title", data: title });
           updateChatTitleById({ chatId: id, title });
+        }
+
+        await result.finishReason;
+        if (capturedInterrupt) {
+          throw capturedInterrupt;
         }
       },
       generateId: generateUUID,
@@ -296,6 +391,51 @@ export async function POST(request: Request) {
         ) {
           return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
         }
+        const rateLimited = error as {
+          statusCode?: number;
+          type?: string;
+          message?: string;
+        };
+        if (
+          rateLimited?.statusCode === 429 ||
+          rateLimited?.type === "rate_limit_exceeded" ||
+          rateLimited?.message?.includes(
+            "Free credits temporarily have rate limits"
+          )
+        ) {
+          return "We're being rate-limited by the AI Gateway. Wait a moment and try again, or add billing at https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dtop-up to remove the free-tier limits.";
+        }
+        const err = error as {
+          cause?: unknown;
+          toolCallId?: string;
+          toolArgs?: unknown;
+          toolName?: string;
+          message?: string;
+        };
+        if (err?.message?.startsWith(InterruptionPrefix)) {
+          return err.message;
+        }
+        const interrupt = Auth0Interrupt.isInterrupt(err?.cause)
+          ? err.cause
+          : Auth0Interrupt.isInterrupt(error)
+            ? error
+            : null;
+        if (interrupt) {
+          const serializable = {
+            ...(
+              interrupt as Auth0Interrupt & {
+                toJSON: () => Record<string, unknown>;
+              }
+            ).toJSON(),
+            toolCall: {
+              id: err.toolCallId,
+              args: err.toolArgs,
+              name: err.toolName,
+            },
+          };
+          return `${InterruptionPrefix}${JSON.stringify(serializable)}`;
+        }
+        console.error("Chat stream error:", error);
         return "Oops, an error occurred!";
       },
     });
