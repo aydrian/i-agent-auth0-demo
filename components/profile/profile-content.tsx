@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type ConnectedAccount,
   fetchConnectedAccounts,
@@ -15,7 +15,7 @@ export function ProfileContent({ user }: { user: AppUser }) {
   >([]);
   const [loading, setLoading] = useState(true);
 
-  const loadConnectedAccounts = async () => {
+  const loadConnectedAccounts = useCallback(async () => {
     setLoading(true);
     try {
       const accounts = await fetchConnectedAccounts();
@@ -25,11 +25,11 @@ export function ProfileContent({ user }: { user: AppUser }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadConnectedAccounts();
-  }, []);
+  }, [loadConnectedAccounts]);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

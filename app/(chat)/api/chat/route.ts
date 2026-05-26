@@ -265,7 +265,7 @@ export async function POST(request: Request) {
         const stopOnAuth0Interrupt = ({
           steps,
         }: {
-          steps: ReadonlyArray<{ content: ReadonlyArray<unknown> }>;
+          steps: ReadonlyArray<{ content: readonly unknown[] }>;
         }) =>
           steps.some((step) =>
             step.content.some((p) => {

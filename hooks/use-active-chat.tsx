@@ -135,10 +135,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
             part.state === "output-available" &&
             typeof (part as { type?: string }).type === "string" &&
             (part as { type: string }).type.startsWith("tool-") &&
-            (
-              (part as { output?: { continueInterruption?: boolean } })
-                .output?.continueInterruption
-            ) === true;
+            (part as { output?: { continueInterruption?: boolean } }).output
+              ?.continueInterruption === true;
           if (!(isApprovalResponded || isContinueInterruption)) {
             continue;
           }
