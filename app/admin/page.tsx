@@ -3,8 +3,6 @@ import { auth0 } from "@/lib/auth0";
 import { listProducts } from "@/lib/shop-api-client";
 import { AdminClient } from "./admin-client";
 
-export const dynamic = "force-dynamic";
-
 export default async function AdminPage() {
   const session = await auth0.getSession();
   const adminEmail = process.env.ADMIN_EMAIL;
