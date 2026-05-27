@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from models import ProductInfo
 from sales import set_sale, clear_sale, list_sales
+from history import record_price
 from routers.shop import CATALOG, build_product_info
 
 router = APIRouter()
@@ -29,6 +30,11 @@ async def post_sale(req: SaleRequest, x_admin_key: str | None = Header(None)):
     if req.productId not in {p["id"] for p in CATALOG}:
         raise HTTPException(status_code=404, detail="Unknown productId")
     entry = set_sale(req.productId, req.salePrice, req.durationMinutes)
+    # Also record the sale price in the history so the agent's
+    # getProductHistory tool sees today's drop immediately.
+    product = next((p for p in CATALOG if p["id"] == req.productId), None)
+    if product:
+        record_price(req.productId, req.salePrice, float(product["pricePerUnit"]))
     return {"productId": req.productId, **entry}
 
 

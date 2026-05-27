@@ -8,6 +8,7 @@ from rapidfuzz import fuzz
 
 from models import ProductInfo, OrderRequest, OrderResponse, SearchResponse
 from sales import get_sale_price
+from history import get_history, record_price
 
 router = APIRouter()
 
@@ -142,3 +143,12 @@ async def create_order(request: OrderRequest):
         estimatedDelivery=estimated_delivery,
         status="confirmed",
     )
+
+
+@router.get("/shop/products/{product_id}/history")
+async def get_product_history(product_id: str, days: int = Query(14, ge=1, le=30)):
+    """Return the last `days` daily price snapshots for a product."""
+    if product_id not in CATALOG_INDEX:
+        raise HTTPException(status_code=404, detail={"error": "Unknown productId", "productId": product_id})
+    product = CATALOG_INDEX[product_id]
+    return get_history(product_id, float(product["pricePerUnit"]), days)
