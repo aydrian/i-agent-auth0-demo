@@ -15,7 +15,7 @@ export async function createWatch(input: {
   userId: string;
   productId: string;
   productName: string;
-  targetPrice: number;
+  intent: string;
 }): Promise<Watchlist> {
   try {
     const [row] = await db
@@ -24,7 +24,7 @@ export async function createWatch(input: {
         userId: input.userId,
         productId: input.productId,
         productName: input.productName,
-        targetPrice: input.targetPrice.toFixed(2),
+        intent: input.intent,
         status: "active",
         createdAt: new Date(),
       })

@@ -29,6 +29,11 @@ export type ShopOrderResponse = {
   status: string;
 };
 
+export type ProductHistoryEntry = {
+  date: string; // ISO YYYY-MM-DD
+  price: number;
+};
+
 function baseUrl(): string {
   const url = process.env.SHOP_API_URL;
   if (!url) {
@@ -77,6 +82,21 @@ export async function placeOrderWithToken(
     throw new Error(`Shop order failed: ${res.status} ${await res.text()}`);
   }
   return (await res.json()) as ShopOrderResponse;
+}
+
+export async function fetchProductHistory(
+  productId: string,
+  days = 14
+): Promise<ProductHistoryEntry[]> {
+  const u = new URL(
+    `${baseUrl()}/products/${encodeURIComponent(productId)}/history`
+  );
+  u.searchParams.set("days", String(days));
+  const res = await fetch(u, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Shop history failed: ${res.status} ${await res.text()}`);
+  }
+  return (await res.json()) as ProductHistoryEntry[];
 }
 
 export async function adminSetSale(input: {

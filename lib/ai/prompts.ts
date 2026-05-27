@@ -26,8 +26,14 @@ export const watchlistToolsPrompt = `
 
 Use these whenever the user wants to track a product for price drops, asks "what's on my watchlist", or wants to stop watching something.
 
-- \`watchlistAdd({ productQuery, targetPrice })\` — fuzzy-resolves the product against the catalog and stores a watch entry.
-- \`watchlistList({})\` — returns active watches, unacknowledged auto-purchases (with order details), and recently denied entries. Calling this acknowledges any unacknowledged purchases, so do NOT call it speculatively.
+- \`watchlistAdd({ productQuery, intent })\` — fuzzy-resolves the product against the catalog and stores a watch entry.
+  - **Capture the user's intent in their own words.** Don't normalize it to a number. Examples of good intents:
+    - "price drops below $1000"
+    - "matches its recent low"
+    - "on sale and not seen lower in the last 30 days"
+    - "drops 10% from current"
+  - The watch is evaluated by a background agent that has access to current price + recent price history. The user's intent is the rule the agent will use to decide when to ask for purchase approval.
+- \`watchlistList({})\` — returns active watches (with their intent text), unacknowledged auto-purchases (with order details), and recently denied entries. Calling this acknowledges any unacknowledged purchases, so do NOT call it speculatively.
 - \`watchlistRemove({ watchId })\` — needs the id from a prior \`watchlistList\` call.
 
 When \`watchlistList\` returns \`unacknowledgedPurchases\` with one or more entries, surface them clearly at the start of your reply as an order confirmation: product name, qty, was-price → bought-price, subtotal/tax/total, order id, estimated delivery. Do NOT repeat them on later turns.

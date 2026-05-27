@@ -20,7 +20,7 @@ export const watchlistList = ({ userId }: { userId: string }) =>
           id: w.id,
           productId: w.productId,
           productName: w.productName,
-          targetPrice: Number(w.targetPrice),
+          intent: w.intent,
           status: w.status,
           lastSeenPrice: w.lastSeenPrice ? Number(w.lastSeenPrice) : null,
         }));

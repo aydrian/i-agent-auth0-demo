@@ -123,7 +123,7 @@ export const watchlist = pgTable("Watchlist", {
   userId: varchar("userId", { length: 255 }).notNull(),
   productId: varchar("productId", { length: 64 }).notNull(),
   productName: text("productName").notNull(),
-  targetPrice: numeric("targetPrice", { precision: 10, scale: 2 }).notNull(),
+  intent: text("intent").notNull(),
   status: varchar("status", {
     enum: ["active", "notified", "purchased", "denied", "error"],
   })
