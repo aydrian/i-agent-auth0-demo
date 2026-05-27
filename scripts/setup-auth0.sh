@@ -222,7 +222,7 @@ echo "Summary"
 echo "-------"
 ok "Shop API: $API_STATUS"
 ok "Client grant $CIBA_GRANT: $GRANT_STATUS"
-note "Manual: confirm CIBA enabled at Tenant Settings -> Authentication Profile"
+note "Manual: confirm CIBA enabled at Tenant Settings \xE2\x86\x92 Authentication Profile"
 note "Manual: enroll demo user in Guardian on a phone"
 
 exit 0
