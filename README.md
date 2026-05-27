@@ -107,12 +107,19 @@ This branch (`feat/ciba-watchlist`) demonstrates Auth0 CIBA + Guardian as out-of
 
 ### Auth0 prerequisites (one-time)
 
-1. Create an API in Auth0 with:
-   - **Identifier (audience):** `https://api.shop-online-demo.com` (or any URL — must match `SHOP_API_AUDIENCE`).
-   - **Permission/scope:** `product:buy`.
-2. On the Auth0 application: Settings → Advanced → Grant Types → enable **Client-Initiated Backchannel Authentication (CIBA)**.
-3. In Tenant Settings → Authentication Profile, ensure CIBA is enabled.
-4. Enroll your demo user in Guardian on a phone.
+Most of the setup is scripted. Install [`auth0`](https://auth0.github.io/auth0-cli/) and `jq`, then:
+
+```bash
+auth0 login                  # browser flow, one-time
+pnpm setup:auth0             # idempotent: creates the API + adds the CIBA grant
+```
+
+Two manual steps remain:
+
+1. In **Tenant Settings → Authentication Profile**, ensure CIBA is enabled (it's a tenant-level toggle the CLI can't flip).
+2. Enroll your demo user in **Guardian** on a phone.
+
+Then set the matching env vars in `.env.local` (see below).
 
 ### Local run
 
