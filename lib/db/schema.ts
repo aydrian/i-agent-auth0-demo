@@ -3,6 +3,7 @@ import {
   boolean,
   foreignKey,
   json,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -116,3 +117,25 @@ export const stream = pgTable(
 );
 
 export type Stream = InferSelectModel<typeof stream>;
+
+export const watchlist = pgTable("Watchlist", {
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  userId: varchar("userId", { length: 255 }).notNull(),
+  productId: varchar("productId", { length: 64 }).notNull(),
+  productName: text("productName").notNull(),
+  targetPrice: numeric("targetPrice", { precision: 10, scale: 2 }).notNull(),
+  status: varchar("status", {
+    enum: ["active", "notified", "purchased", "denied", "error"],
+  })
+    .notNull()
+    .default("active"),
+  createdAt: timestamp("createdAt").notNull(),
+  notifiedAt: timestamp("notifiedAt"),
+  lastSeenPrice: numeric("lastSeenPrice", { precision: 10, scale: 2 }),
+  purchasedPrice: numeric("purchasedPrice", { precision: 10, scale: 2 }),
+  purchaseDetails: json("purchaseDetails"),
+  orderId: text("orderId"),
+  acknowledgedAt: timestamp("acknowledgedAt"),
+});
+
+export type Watchlist = InferSelectModel<typeof watchlist>;

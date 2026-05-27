@@ -15,6 +15,13 @@
       "when": 1777473639371,
       "tag": "0001_last_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779846576157,
+      "tag": "0002_serious_shooting_star",
+      "breakpoints": true
     }
   ]
 }
