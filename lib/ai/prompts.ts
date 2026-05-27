@@ -99,7 +99,10 @@ function formatCapabilityLine(capability: Capability): string {
   return `- **${capability.displayName}** — ${capability.description}`;
 }
 
-export const agentIdentityPrompt = (identity: AgentIdentity): string => {
+export const agentIdentityPrompt = (
+  identity: AgentIdentity,
+  options: { toolsActive: boolean } = { toolsActive: true }
+): string => {
   const availableSection =
     identity.available.length > 0
       ? `Available now:\n${identity.available.map(formatCapabilityLine).join("\n")}`
@@ -120,7 +123,7 @@ export const agentIdentityPrompt = (identity: AgentIdentity): string => {
     .join("\n\n");
 
   const watchlistAlert =
-    identity.unacknowledgedPurchaseCount > 0
+    options.toolsActive && identity.unacknowledgedPurchaseCount > 0
       ? `
 
 ## Pending watchlist update
@@ -160,7 +163,7 @@ export const systemPrompt = ({
   agentIdentity: AgentIdentity;
 }) => {
   const requestPrompt = getRequestPromptFromHints(requestHints);
-  const identityPrompt = agentIdentityPrompt(agentIdentity);
+  const identityPrompt = agentIdentityPrompt(agentIdentity, { toolsActive });
 
   if (!toolsActive) {
     return `${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}`;
