@@ -188,28 +188,53 @@ fi
 echo
 echo "Step 2/2: Ensure CIBA grant on client $AUTH0_CLIENT_ID"
 
-CLIENT_JSON=$(auth0 api get "clients/$AUTH0_CLIENT_ID" --json 2>/dev/null) \
-  || die "Failed to fetch client $AUTH0_CLIENT_ID. Check the value and your tenant."
+# Translate Auth0 Management API grant strings to the names the
+# `auth0 apps update --grants` flag accepts. Unknown values (URNs,
+# implicit, password) pass through verbatim — the CLI accepts those.
+to_cli_grant() {
+  case "$1" in
+    authorization_code) echo "code" ;;
+    refresh_token)      echo "refresh-token" ;;
+    client_credentials) echo "credentials" ;;
+    http://auth0.com/oauth/grant-type/password-realm)    echo "password-realm" ;;
+    http://auth0.com/oauth/grant-type/mfa-oob)           echo "mfa-oob" ;;
+    http://auth0.com/oauth/grant-type/mfa-otp)           echo "mfa-otp" ;;
+    http://auth0.com/oauth/grant-type/mfa-recovery-code) echo "mfa-recovery-code" ;;
+    urn:ietf:params:oauth:grant-type:device_code)        echo "device-code" ;;
+    *) echo "$1" ;;
+  esac
+}
 
-EXISTING_GRANTS=$(printf '%s' "$CLIENT_JSON" | jq -c '.grant_types // []')
-HAS_CIBA=$(printf '%s' "$EXISTING_GRANTS" \
-  | jq -r --arg g "$CIBA_GRANT" 'index($g) != null')
+CLIENT_JSON=$(auth0 apps show "$AUTH0_CLIENT_ID" --json 2>/dev/null) \
+  || die "Failed to fetch client $AUTH0_CLIENT_ID. Verify 'auth0 apps show $AUTH0_CLIENT_ID' works in your active tenant."
+
+EXISTING_GRANTS_RAW=$(printf '%s' "$CLIENT_JSON" | jq -r '.grant_types[]? // empty')
+HAS_CIBA="false"
+if printf '%s\n' "$EXISTING_GRANTS_RAW" | grep -qx "$CIBA_GRANT"; then
+  HAS_CIBA="true"
+fi
 
 if [ "$HAS_CIBA" = "true" ]; then
   info "Client already has CIBA grant."
   GRANT_STATUS="already-configured"
 else
-  MERGED_GRANTS=$(printf '%s' "$EXISTING_GRANTS" \
-    | jq -c --arg g "$CIBA_GRANT" '. + [$g]')
+  GRANTS_CSV=""
+  while IFS= read -r g; do
+    [ -z "$g" ] && continue
+    friendly=$(to_cli_grant "$g")
+    GRANTS_CSV="${GRANTS_CSV:+$GRANTS_CSV,}$friendly"
+  done <<EOF
+$EXISTING_GRANTS_RAW
+$CIBA_GRANT
+EOF
 
   if [ "$DRY_RUN" = "1" ]; then
-    info "[dry-run] would patch client $AUTH0_CLIENT_ID grant_types -> $MERGED_GRANTS"
+    info "[dry-run] would update client $AUTH0_CLIENT_ID --grants \"$GRANTS_CSV\""
     GRANT_STATUS="would-add"
   else
-    info "Patching client grant_types -> $MERGED_GRANTS"
-    PATCH_BODY=$(jq -n --argjson g "$MERGED_GRANTS" '{grant_types: $g}')
-    auth0 api patch "clients/$AUTH0_CLIENT_ID" --data "$PATCH_BODY" --json >/dev/null \
-      || die "Failed to patch client grant_types." 2
+    info "Updating client grants -> $GRANTS_CSV"
+    auth0 apps update "$AUTH0_CLIENT_ID" --grants "$GRANTS_CSV" --json >/dev/null \
+      || die "Failed to update client grants." 2
     GRANT_STATUS="added"
   fi
 fi
