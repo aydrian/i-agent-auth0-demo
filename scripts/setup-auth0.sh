@@ -188,27 +188,12 @@ fi
 echo
 echo "Step 2/2: Ensure CIBA grant on client $AUTH0_CLIENT_ID"
 
-# Translate Auth0 Management API grant strings to the names the
-# `auth0 apps update --grants` flag accepts. Unknown values (URNs,
-# implicit, password) pass through verbatim — the CLI accepts those.
-to_cli_grant() {
-  case "$1" in
-    authorization_code) echo "code" ;;
-    refresh_token)      echo "refresh-token" ;;
-    client_credentials) echo "credentials" ;;
-    http://auth0.com/oauth/grant-type/password-realm)    echo "password-realm" ;;
-    http://auth0.com/oauth/grant-type/mfa-oob)           echo "mfa-oob" ;;
-    http://auth0.com/oauth/grant-type/mfa-otp)           echo "mfa-otp" ;;
-    http://auth0.com/oauth/grant-type/mfa-recovery-code) echo "mfa-recovery-code" ;;
-    urn:ietf:params:oauth:grant-type:device_code)        echo "device-code" ;;
-    *) echo "$1" ;;
-  esac
-}
-
 CLIENT_JSON=$(auth0 apps show "$AUTH0_CLIENT_ID" --json 2>/dev/null) \
   || die "Failed to fetch client $AUTH0_CLIENT_ID. Verify 'auth0 apps show $AUTH0_CLIENT_ID' works in your active tenant."
 
-EXISTING_GRANTS_RAW=$(printf '%s' "$CLIENT_JSON" | jq -r '.grant_types[]? // empty')
+# jq's `unique` sorts; we want stable order, so dedupe with a different idiom.
+EXISTING_GRANTS_RAW=$(printf '%s' "$CLIENT_JSON" \
+  | jq -r '(.grant_types // []) | unique[]')
 HAS_CIBA="false"
 if printf '%s\n' "$EXISTING_GRANTS_RAW" | grep -qx "$CIBA_GRANT"; then
   HAS_CIBA="true"
@@ -218,15 +203,14 @@ if [ "$HAS_CIBA" = "true" ]; then
   info "Client already has CIBA grant."
   GRANT_STATUS="already-configured"
 else
-  GRANTS_CSV=""
-  while IFS= read -r g; do
-    [ -z "$g" ] && continue
-    friendly=$(to_cli_grant "$g")
-    GRANTS_CSV="${GRANTS_CSV:+$GRANTS_CSV,}$friendly"
-  done <<EOF
-$EXISTING_GRANTS_RAW
-$CIBA_GRANT
-EOF
+  # Build a deduplicated, comma-separated list of API-format grant strings.
+  # The auth0 CLI's --grants flag accepts API-format values directly (it only
+  # documents friendly aliases like "code"/"refresh-token", but URN/snake_case
+  # forms pass through unchanged). Skipping translation avoids any
+  # round-trip collision.
+  ALL_GRANTS=$(printf '%s\n%s\n' "$EXISTING_GRANTS_RAW" "$CIBA_GRANT" \
+    | awk 'NF && !seen[$0]++')
+  GRANTS_CSV=$(printf '%s' "$ALL_GRANTS" | paste -sd, -)
 
   if [ "$DRY_RUN" = "1" ]; then
     info "[dry-run] would update client $AUTH0_CLIENT_ID --grants \"$GRANTS_CSV\""
