@@ -8,6 +8,10 @@ export async function proxy(request: NextRequest) {
     return new Response("pong", { status: 200 });
   }
 
+  if (pathname.startsWith("/api/cron/")) {
+    return NextResponse.next();
+  }
+
   // Auth0 mounts its own routes at /auth/* (login, logout, callback, profile)
   // and refreshes the session cookie on every request. For /auth/* it returns
   // a real response; for other paths it returns NextResponse.next() with the
