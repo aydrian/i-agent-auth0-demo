@@ -191,34 +191,39 @@ echo "Step 2/2: Ensure CIBA grant on client $AUTH0_CLIENT_ID"
 CLIENT_JSON=$(auth0 apps show "$AUTH0_CLIENT_ID" --json 2>/dev/null) \
   || die "Failed to fetch client $AUTH0_CLIENT_ID. Verify 'auth0 apps show $AUTH0_CLIENT_ID' works in your active tenant."
 
-# jq's `unique` sorts; we want stable order, so dedupe with a different idiom.
-EXISTING_GRANTS_RAW=$(printf '%s' "$CLIENT_JSON" \
-  | jq -r '(.grant_types // []) | unique[]')
-HAS_CIBA="false"
-if printf '%s\n' "$EXISTING_GRANTS_RAW" | grep -qx "$CIBA_GRANT"; then
-  HAS_CIBA="true"
-fi
+EXISTING_GRANTS=$(printf '%s' "$CLIENT_JSON" | jq -c '.grant_types // []')
+HAS_CIBA=$(printf '%s' "$EXISTING_GRANTS" \
+  | jq -r --arg g "$CIBA_GRANT" 'index($g) != null')
 
-if [ "$HAS_CIBA" = "true" ]; then
-  info "Client already has CIBA grant."
+# Auth0 requires async_approval_notification_channels to be configured when
+# CIBA is enabled. Default to push (Guardian) — that's what this demo uses.
+EXISTING_CHANNELS=$(printf '%s' "$CLIENT_JSON" \
+  | jq -c '.async_approval_notification_channels // []')
+HAS_CHANNEL=$(printf '%s' "$EXISTING_CHANNELS" | jq -r 'length > 0')
+
+if [ "$HAS_CIBA" = "true" ] && [ "$HAS_CHANNEL" = "true" ]; then
+  info "Client already has CIBA grant and notification channel."
   GRANT_STATUS="already-configured"
 else
-  # Build a deduplicated, comma-separated list of API-format grant strings.
-  # The auth0 CLI's --grants flag accepts API-format values directly (it only
-  # documents friendly aliases like "code"/"refresh-token", but URN/snake_case
-  # forms pass through unchanged). Skipping translation avoids any
-  # round-trip collision.
-  ALL_GRANTS=$(printf '%s\n%s\n' "$EXISTING_GRANTS_RAW" "$CIBA_GRANT" \
-    | awk 'NF && !seen[$0]++')
-  GRANTS_CSV=$(printf '%s' "$ALL_GRANTS" | paste -sd, -)
+  MERGED_GRANTS=$(printf '%s' "$EXISTING_GRANTS" \
+    | jq -c --arg g "$CIBA_GRANT" 'if index($g) then . else . + [$g] end')
+
+  # Preserve any existing channels; default to ["push"] if none.
+  CHANNELS=$(printf '%s' "$EXISTING_CHANNELS" \
+    | jq -c 'if length > 0 then . else ["push"] end')
+
+  PATCH_BODY=$(jq -nc \
+    --argjson grants "$MERGED_GRANTS" \
+    --argjson channels "$CHANNELS" \
+    '{grant_types: $grants, async_approval_notification_channels: $channels}')
 
   if [ "$DRY_RUN" = "1" ]; then
-    info "[dry-run] would update client $AUTH0_CLIENT_ID --grants \"$GRANTS_CSV\""
+    info "[dry-run] would PATCH clients/$AUTH0_CLIENT_ID with $PATCH_BODY"
     GRANT_STATUS="would-add"
   else
-    info "Updating client grants -> $GRANTS_CSV"
-    auth0 apps update "$AUTH0_CLIENT_ID" --grants "$GRANTS_CSV" --json >/dev/null \
-      || die "Failed to update client grants." 2
+    info "Patching client (grants + async_approval_notification_channels)..."
+    auth0 api patch "clients/$AUTH0_CLIENT_ID" --data "$PATCH_BODY" >/dev/null \
+      || die "Failed to patch client (raw api patch). See message above." 2
     GRANT_STATUS="added"
   fi
 fi
