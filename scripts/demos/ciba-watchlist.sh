@@ -156,6 +156,14 @@ do_check() {
     failed=1
   fi
 
+  # Check 2: shop-api price history endpoint
+  if curl -fsS --max-time 5 "${SHOP_API_URL}/products/iphone-15-pro/history" >/dev/null 2>&1; then
+    ok "shop-api price history endpoint live"
+  else
+    fail "shop-api price history endpoint failed (need /products/{id}/history; is shop-api up to date?)"
+    failed=1
+  fi
+
   # Check 2: postgres reachable + Watchlist table exists
   if docker compose exec -T postgres \
       psql -U postgres -d chatbot -c '\d "Watchlist"' >/dev/null 2>&1; then
