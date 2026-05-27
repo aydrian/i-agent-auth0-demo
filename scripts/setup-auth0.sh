@@ -7,7 +7,8 @@
 # adds the CIBA grant type to the configured client.
 #
 # Manual steps that remain after this script:
-#   * Tenant Settings -> Authentication Profile -> ensure CIBA is enabled.
+#   * Security -> Multi-factor Auth -> enable "Push Notification using
+#     Auth0 Guardian" and select the Push Notification App.
 #   * Enroll the demo user in Guardian on a phone.
 #
 # Requirements:
@@ -242,7 +243,7 @@ echo "Summary"
 echo "-------"
 ok "Shop API: $API_STATUS"
 ok "Client grant $CIBA_GRANT: $GRANT_STATUS"
-note "Manual: confirm CIBA enabled at Tenant Settings \xE2\x86\x92 Authentication Profile"
+note "Manual: enable Security \xE2\x86\x92 Multi-factor Auth \xE2\x86\x92 'Push Notification using Auth0 Guardian'"
 note "Manual: enroll demo user in Guardian on a phone"
 
 exit 0

@@ -116,7 +116,7 @@ pnpm setup:auth0             # idempotent: creates the API + adds the CIBA grant
 
 Two manual steps remain:
 
-1. In **Tenant Settings → Authentication Profile**, ensure CIBA is enabled (it's a tenant-level toggle the CLI can't flip).
+1. In **Security → Multi-factor Auth**, enable **"Push Notification using Auth0 Guardian"** and select a Push Notification App. (CIBA push delivery uses Guardian; the CLI can't toggle this.)
 2. Enroll your demo user in **Guardian** on a phone.
 
 Then set the matching env vars in `.env.local` (see below).
