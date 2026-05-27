@@ -1,0 +1,14 @@
+[project]
+name = "shop-api"
+version = "0.1.0"
+description = "FastAPI server for online shopping demo"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "rapidfuzz",
+    "pydantic",
+]
+
+[dependency-groups]
+dev = []

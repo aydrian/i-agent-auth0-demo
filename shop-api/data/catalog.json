@@ -1,0 +1,66 @@
+[
+  {
+    "id": "iphone-15-pro",
+    "name": "iPhone 15 Pro",
+    "category": "Electronics",
+    "pricePerUnit": 1199.00,
+    "imageUrl": "iphone-15-pro.jpg",
+    "tags": ["phone", "smartphone", "mobile", "cell phone"]
+  },
+  {
+    "id": "samsung-galaxy-s24",
+    "name": "Samsung Galaxy S24",
+    "category": "Electronics",
+    "pricePerUnit": 899.00,
+    "imageUrl": "samsung-galaxy-s24.jpg",
+    "tags": ["phone", "smartphone", "mobile", "android", "cell phone"]
+  },
+  {
+    "id": "sony-wh-1000xm5",
+    "name": "Sony WH-1000XM5 Headphones",
+    "category": "Electronics",
+    "pricePerUnit": 349.00,
+    "imageUrl": "sony-wh-1000xm5.jpg",
+    "tags": ["headphones", "headset", "earphones", "noise cancelling", "wireless"]
+  },
+  {
+    "id": "ipad-pro",
+    "name": "iPad Pro 12.9\"",
+    "category": "Electronics",
+    "pricePerUnit": 1099.00,
+    "imageUrl": "ipad-pro.jpg",
+    "tags": ["tablet", "ipad"]
+  },
+  {
+    "id": "apple-watch-s9",
+    "name": "Apple Watch Series 9",
+    "category": "Electronics",
+    "pricePerUnit": 399.00,
+    "imageUrl": "apple-watch-s9.jpg",
+    "tags": ["watch", "smartwatch", "wearable", "fitness tracker"]
+  },
+  {
+    "id": "nike-air-max-90",
+    "name": "Nike Air Max 90",
+    "category": "Fashion",
+    "pricePerUnit": 130.00,
+    "imageUrl": "nike-air-max-90.jpg",
+    "tags": ["shoes", "sneakers", "running shoes", "trainers", "footwear"]
+  },
+  {
+    "id": "dyson-v15",
+    "name": "Dyson V15 Detect Vacuum",
+    "category": "Home",
+    "pricePerUnit": 749.00,
+    "imageUrl": "dyson-v15.jpg",
+    "tags": ["vacuum", "vacuum cleaner", "hoover", "cleaning"]
+  },
+  {
+    "id": "instant-pot-duo",
+    "name": "Instant Pot Duo 7-in-1",
+    "category": "Home",
+    "pricePerUnit": 89.00,
+    "imageUrl": "instant-pot-duo.jpg",
+    "tags": ["pressure cooker", "slow cooker", "rice cooker", "cooking"]
+  }
+]
