@@ -66,6 +66,22 @@ services:
         mc mb --ignore-existing local/chatbot-uploads &&
         mc anonymous set download local/chatbot-uploads
 
+  shop-api:
+    build: ./shop-api
+    container_name: chatbot-shop-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
+    volumes:
+      - ./shop-api/data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:
   redis_data:
