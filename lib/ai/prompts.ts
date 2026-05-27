@@ -119,13 +119,22 @@ export const agentIdentityPrompt = (identity: AgentIdentity): string => {
     .filter(Boolean)
     .join("\n\n");
 
+  const watchlistAlert =
+    identity.unacknowledgedPurchaseCount > 0
+      ? `
+
+## Pending watchlist update
+
+While the user was away, ${identity.unacknowledgedPurchaseCount} auto-purchase(s) from their watchlist completed. Before answering anything else, call \`watchlistList\` once and surface the \`unacknowledgedPurchases\` to the user as an order confirmation block (item, qty, was-price → bought-price, subtotal, tax, total, order id, estimated delivery). Calling \`watchlistList\` will mark them acknowledged so you won't repeat them.`
+      : "";
+
   return `# Your identity
 
 You are an instance of Chatbot, working on behalf of ${identity.userName}. Every action you take is on their behalf — never claim to be a generic assistant or to have no user.
 
 ## Your tool inventory
 
-${inventory}
+${inventory}${watchlistAlert}
 
 ## When the user asks who you are or what you can do
 
