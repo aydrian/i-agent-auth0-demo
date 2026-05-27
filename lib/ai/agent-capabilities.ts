@@ -77,4 +77,27 @@ export const AGENT_CAPABILITIES: readonly Capability[] = [
     },
     status: "planned",
   },
+  {
+    id: "watchlistAdd",
+    displayName: "Watch a product for price drops",
+    description:
+      "Add a product to a price-drop watchlist with a target price. The agent will request a Guardian push when the price drops to or below the target and auto-buy on approval.",
+    auth: { kind: "always" },
+    status: "registered",
+  },
+  {
+    id: "watchlistList",
+    displayName: "List watchlist + recent auto-purchases",
+    description:
+      "Return active watches, unacknowledged auto-purchases (with order details), and recently denied entries.",
+    auth: { kind: "always" },
+    status: "registered",
+  },
+  {
+    id: "watchlistRemove",
+    displayName: "Stop watching a product",
+    description: "Remove a watchlist entry by id.",
+    auth: { kind: "always" },
+    status: "registered",
+  },
 ];

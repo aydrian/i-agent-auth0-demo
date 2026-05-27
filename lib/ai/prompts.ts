@@ -21,6 +21,18 @@ You have tools that can access the user's own data. Use them instead of refusing
 - Call this when the user asks about weather. Accept either a city name or latitude/longitude.
 `;
 
+export const watchlistToolsPrompt = `
+**Watchlist tools** — \`watchlistAdd\`, \`watchlistList\`, \`watchlistRemove\`.
+
+Use these whenever the user wants to track a product for price drops, asks "what's on my watchlist", or wants to stop watching something.
+
+- \`watchlistAdd({ productQuery, targetPrice })\` — fuzzy-resolves the product against the catalog and stores a watch entry.
+- \`watchlistList({})\` — returns active watches, unacknowledged auto-purchases (with order details), and recently denied entries. Calling this acknowledges any unacknowledged purchases, so do NOT call it speculatively.
+- \`watchlistRemove({ watchId })\` — needs the id from a prior \`watchlistList\` call.
+
+When \`watchlistList\` returns \`unacknowledgedPurchases\` with one or more entries, surface them clearly at the start of your reply as an order confirmation: product name, qty, was-price → bought-price, subtotal/tax/total, order id, estimated delivery. Do NOT repeat them on later turns.
+`;
+
 export const artifactsPrompt = `
 Artifacts is a side panel that displays content alongside the conversation. It supports scripts (code), documents (text), and spreadsheets. Changes appear in real-time.
 
@@ -145,7 +157,7 @@ export const systemPrompt = ({
     return `${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}`;
   }
 
-  return `${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}\n\n${userDataToolsPrompt}\n\n${artifactsPrompt}`;
+  return `${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}\n\n${userDataToolsPrompt}\n\n${watchlistToolsPrompt}\n\n${artifactsPrompt}`;
 };
 
 export const codePrompt = `
