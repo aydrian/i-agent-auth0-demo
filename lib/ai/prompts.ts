@@ -1,5 +1,7 @@
 import type { Geo } from "@vercel/functions";
 import type { ArtifactKind } from "@/components/chat/artifact";
+import type { Capability } from "./agent-capabilities";
+import type { AgentIdentity } from "./agent-identity";
 
 export const userDataToolsPrompt = `
 You have tools that can access the user's own data. Use them instead of refusing.
@@ -81,20 +83,69 @@ About the origin of user's request:
 - country: ${requestHints.country}
 `;
 
+function formatCapabilityLine(capability: Capability): string {
+  return `- **${capability.displayName}** — ${capability.description}`;
+}
+
+export const agentIdentityPrompt = (identity: AgentIdentity): string => {
+  const availableSection =
+    identity.available.length > 0
+      ? `Available now:\n${identity.available.map(formatCapabilityLine).join("\n")}`
+      : "Available now: (none)";
+
+  const needsAuthSection =
+    identity.needsAuthorization.length > 0
+      ? `With a connected Google account, also available:\n${identity.needsAuthorization.map(formatCapabilityLine).join("\n")}`
+      : "";
+
+  const plannedSection =
+    identity.planned.length > 0
+      ? `Coming soon (not yet implemented):\n${identity.planned.map(formatCapabilityLine).join("\n")}`
+      : "";
+
+  const inventory = [availableSection, needsAuthSection, plannedSection]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return `# Your identity
+
+You are an instance of Chatbot, working on behalf of ${identity.userName}. Every action you take is on their behalf — never claim to be a generic assistant or to have no user.
+
+## Your tool inventory
+
+${inventory}
+
+## When the user asks who you are or what you can do
+
+This includes "who are you", "what is your name", "what can you do", "what tools do you have", "what are your capabilities", or any similar question. When asked, you MUST:
+
+1. Start with: "I'm an instance of Chatbot, working on behalf of ${identity.userName}."
+2. List the **Available now** capabilities as a bulleted list, using each item's **displayName** and a short paraphrase of its description.
+3. If there are **with a connected Google account** items, list them as a separate bulleted section introduced with "With a connected Google account I could also:".
+4. If there are **Coming soon** items, list them as a separate bulleted section introduced with "Coming soon:".
+5. Do NOT collapse these lists into a single sentence. Keep the sections distinct so the user can see the difference between what is available now, what requires authorization, and what is planned.
+6. Do NOT invent tools, scopes, or capabilities that are not in the inventory above.
+
+For these identity questions, prefer completeness over brevity — the "be concise" guidance does not apply.`;
+};
+
 export const systemPrompt = ({
   requestHints,
   toolsActive,
+  agentIdentity,
 }: {
   requestHints: RequestHints;
   toolsActive: boolean;
+  agentIdentity: AgentIdentity;
 }) => {
   const requestPrompt = getRequestPromptFromHints(requestHints);
+  const identityPrompt = agentIdentityPrompt(agentIdentity);
 
   if (!toolsActive) {
-    return `${regularPrompt}\n\n${requestPrompt}`;
+    return `${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}`;
   }
 
-  return `${regularPrompt}\n\n${requestPrompt}\n\n${userDataToolsPrompt}\n\n${artifactsPrompt}`;
+  return `${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}\n\n${userDataToolsPrompt}\n\n${artifactsPrompt}`;
 };
 
 export const codePrompt = `

@@ -13,6 +13,7 @@ import {
 import { checkBotId } from "botid/server";
 import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
+import { buildAgentIdentity } from "@/lib/ai/agent-identity";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import {
   allowedModelIds,
@@ -204,6 +205,8 @@ export async function POST(request: Request) {
     const supportsTools = capabilities?.tools === true;
     const toolsActive = !(isReasoningModel && !supportsTools);
 
+    const agentIdentity = await buildAgentIdentity({ session });
+
     const modelMessages = await convertToModelMessages(uiMessages);
 
     const stream = createUIMessageStream({
@@ -279,7 +282,7 @@ export async function POST(request: Request) {
 
         const result = streamText({
           model: getLanguageModel(chatModel),
-          system: systemPrompt({ requestHints, toolsActive }),
+          system: systemPrompt({ requestHints, toolsActive, agentIdentity }),
           messages: modelMessages,
           stopWhen: [stepCountIs(3), stopOnAuth0Interrupt],
           experimental_activeTools: toolsActive
