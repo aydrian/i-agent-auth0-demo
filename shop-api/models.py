@@ -6,6 +6,7 @@ class ProductInfo(BaseModel):
     name: str
     category: str
     pricePerUnit: float
+    salePrice: float | None = None
     imageUrl: str
 
 
