@@ -110,8 +110,10 @@ export function AdminClient({ products }: { products: ShopProduct[] }) {
                   <td>
                     {sale ? new Date(sale.expiresAt).toLocaleString() : "—"}
                   </td>
-                  <td className="space-x-2">
+                  <td className="flex flex-wrap items-center gap-2">
+                    <span>$</span>
                     <input
+                      aria-label="Sale price"
                       className="w-24 rounded border px-2 py-1"
                       onChange={(e) =>
                         setDraft((s) => ({
@@ -119,12 +121,14 @@ export function AdminClient({ products }: { products: ShopProduct[] }) {
                           [p.id]: { ...d, price: e.target.value },
                         }))
                       }
-                      placeholder="Sale $"
+                      placeholder="999.00"
                       step="0.01"
                       type="number"
                       value={d.price}
                     />
+                    <span>for</span>
                     <input
+                      aria-label="Sale duration in minutes"
                       className="w-16 rounded border px-2 py-1"
                       onChange={(e) =>
                         setDraft((s) => ({
@@ -132,10 +136,12 @@ export function AdminClient({ products }: { products: ShopProduct[] }) {
                           [p.id]: { ...d, minutes: e.target.value },
                         }))
                       }
-                      placeholder="min"
+                      placeholder="60"
+                      title="Sale duration in minutes"
                       type="number"
                       value={d.minutes}
                     />
+                    <span>mins</span>
                     <button
                       className="rounded bg-blue-600 px-2 py-1 text-white"
                       onClick={() => setSale(p.id)}
