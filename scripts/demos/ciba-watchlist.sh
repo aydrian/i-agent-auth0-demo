@@ -106,13 +106,13 @@ do_reset() {
 
   note "Clearing active sales via ${SHOP_API_URL}/admin/sales..."
   local sales_json
-  sales_json=$(curl -fsS "${SHOP_API_URL}/admin/sales" -H "X-Admin-Key: $ADMIN_API_KEY" \
+  sales_json=$(curl -fsS --max-time 5 "${SHOP_API_URL}/admin/sales" -H "X-Admin-Key: $ADMIN_API_KEY" \
     || die "Failed to reach shop-api at ${SHOP_API_URL}/admin/sales (is docker compose up?)")
 
   local sale_count=0
   local product_id
   for product_id in $(printf '%s' "$sales_json" | jq -r 'keys[]?'); do
-    curl -fsS -X DELETE -H "X-Admin-Key: $ADMIN_API_KEY" \
+    curl -fsS --max-time 5 -X DELETE -H "X-Admin-Key: $ADMIN_API_KEY" \
       "${SHOP_API_URL}/admin/sale/${product_id}" >/dev/null \
       || die "Failed to clear sale for productId=${product_id}"
     sale_count=$((sale_count + 1))
@@ -149,7 +149,7 @@ do_check() {
   local failed=0
 
   # Check 1: shop-api responds
-  if curl -fsS "${SHOP_API_URL}/search?product=iphone" >/dev/null 2>&1; then
+  if curl -fsS --max-time 5 "${SHOP_API_URL}/search?product=iphone" >/dev/null 2>&1; then
     ok "shop-api reachable at ${SHOP_API_URL}"
   else
     fail "shop-api not reachable at ${SHOP_API_URL}/search (is docker compose up?)"
