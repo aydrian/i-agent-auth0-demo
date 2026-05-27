@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ShopProduct } from "@/lib/shop-api-client";
 
 type SaleEntry = { salePrice: number; expiresAt: string };
@@ -12,15 +12,19 @@ export function AdminClient({ products }: { products: ShopProduct[] }) {
   >({});
   const [tickResult, setTickResult] = useState<unknown>(null);
   const [isRunningCron, setIsRunningCron] = useState(false);
-  const [salesLoaded, setSalesLoaded] = useState(false);
 
   async function refreshSales() {
     const res = await fetch("/api/admin/sale", { cache: "no-store" });
     if (res.ok) {
       setSales((await res.json()) as Record<string, SaleEntry>);
     }
-    setSalesLoaded(true);
   }
+
+  // Load sales once on mount. Must be in useEffect — calling it from the
+  // render body executes during SSR, where fetch() rejects relative URLs.
+  useEffect(() => {
+    refreshSales();
+  }, []);
 
   async function setSale(productId: string) {
     const d = draft[productId] ?? { price: "", minutes: "" };
@@ -52,10 +56,6 @@ export function AdminClient({ products }: { products: ShopProduct[] }) {
     } finally {
       setIsRunningCron(false);
     }
-  }
-
-  if (!salesLoaded) {
-    refreshSales();
   }
 
   return (

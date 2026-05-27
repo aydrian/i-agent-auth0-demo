@@ -1,9 +1,13 @@
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { auth0 } from "@/lib/auth0";
 import { listProducts } from "@/lib/shop-api-client";
 import { AdminClient } from "./admin-client";
 
 export default async function AdminPage() {
+  // Opt this route into dynamic rendering — required by cacheComponents
+  // because we read the session cookie (uncached) below.
+  await connection();
   const session = await auth0.getSession();
   const adminEmail = process.env.ADMIN_EMAIL;
 
