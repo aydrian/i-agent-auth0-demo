@@ -208,9 +208,10 @@ else
   MERGED_GRANTS=$(printf '%s' "$EXISTING_GRANTS" \
     | jq -c --arg g "$CIBA_GRANT" 'if index($g) then . else . + [$g] end')
 
-  # Preserve any existing channels; default to ["push"] if none.
+  # Preserve any existing channels; default to ["guardian-push"] if none.
+  # Valid Auth0 values: "guardian-push", "email".
   CHANNELS=$(printf '%s' "$EXISTING_CHANNELS" \
-    | jq -c 'if length > 0 then . else ["push"] end')
+    | jq -c 'if length > 0 then . else ["guardian-push"] end')
 
   PATCH_BODY=$(jq -nc \
     --argjson grants "$MERGED_GRANTS" \
@@ -222,8 +223,13 @@ else
     GRANT_STATUS="would-add"
   else
     info "Patching client (grants + async_approval_notification_channels)..."
-    auth0 api patch "clients/$AUTH0_CLIENT_ID" --data "$PATCH_BODY" >/dev/null \
-      || die "Failed to patch client (raw api patch). See message above." 2
+    # auth0 api patch returns 0 even on API errors, so we have to inspect the
+    # response body for an error envelope.
+    PATCH_RESPONSE=$(auth0 api patch "clients/$AUTH0_CLIENT_ID" --data "$PATCH_BODY" 2>&1 || true)
+    if printf '%s' "$PATCH_RESPONSE" | jq -e '.statusCode and (.statusCode >= 400)' >/dev/null 2>&1; then
+      printf '%s\n' "$PATCH_RESPONSE" >&2
+      die "API patch rejected. See message above." 2
+    fi
     GRANT_STATUS="added"
   fi
 fi
