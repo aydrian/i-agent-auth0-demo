@@ -5,9 +5,11 @@
 # Reset and verify state for the CIBA price-drop watchlist demo.
 #
 # Subcommands:
-#   reset   Clear active sales (shop-api) and Watchlist rows (postgres).
-#   check   Verify shop-api is up, postgres is reachable, Auth0 client has
-#           the CIBA grant + guardian-push channel.
+#   reset    Clear active sales (shop-api) and Watchlist rows (postgres).
+#   check    Verify shop-api is up, postgres is reachable, Auth0 client has
+#            the CIBA grant + guardian-push channel.
+#   trigger  POST /api/cron/check-watchlists with CRON_SECRET to fire the
+#            watchlist tick on demand (skips the Vercel schedule).
 #
 # Env vars consumed (loaded from .env.local if present):
 #   POSTGRES_URL       (used only as a sanity check; the script uses
@@ -16,6 +18,8 @@
 #   SHOP_API_URL       e.g. http://localhost:8000/api/shop
 #   ADMIN_API_KEY      shop-api admin endpoint key
 #   AUTH0_CLIENT_ID    used by the `check` subcommand for grant verification
+#   CRON_SECRET        used by the `trigger` subcommand
+#   APP_BASE_URL       defaults to http://localhost:3000 (used by `trigger`)
 #
 # Exit codes:
 #   0  success
@@ -68,15 +72,21 @@ Subcommands:
   check    Verify the demo's preflight: shop-api reachable, postgres reachable
            and Watchlist table present, Auth0 client has CIBA grant and
            guardian-push channel. Exits non-zero on any failure.
+  trigger  Fire the watchlist cron tick on demand (POST /api/cron/check-watchlists
+           with CRON_SECRET). Useful in live demos to skip waiting for the
+           Vercel cron schedule. Returns the per-watch JSON summary.
 
 Examples:
   pnpm demo:ciba-watchlist reset
   pnpm demo:ciba-watchlist check
+  pnpm demo:ciba-watchlist trigger
 
 Env vars (loaded from .env.local):
   SHOP_API_URL      defaults to http://localhost:8000/api/shop
   ADMIN_API_KEY     required for `reset`
   AUTH0_CLIENT_ID   required for `check`
+  CRON_SECRET       required for `trigger`
+  APP_BASE_URL      defaults to http://localhost:3000 (used by `trigger`)
 EOF
 }
 
@@ -205,6 +215,26 @@ do_check() {
 }
 
 # ---------------------------------------------------------------------------
+# trigger
+# ---------------------------------------------------------------------------
+do_trigger() {
+  command -v curl >/dev/null 2>&1 || die "curl not installed."
+  command -v jq   >/dev/null 2>&1 || die "jq not installed. Install with: brew install jq"
+
+  load_env
+
+  : "${CRON_SECRET:?CRON_SECRET is not set. Add it to .env.local or export it.}"
+  local app_base="${APP_BASE_URL:-http://localhost:3000}"
+
+  note "POST ${app_base}/api/cron/check-watchlists ..."
+  # The cron route may block up to ~90s waiting on Guardian approval.
+  curl -fsS --max-time 100 -X POST \
+    -H "Authorization: Bearer $CRON_SECRET" \
+    "${app_base}/api/cron/check-watchlists" \
+    | jq .
+}
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 case "${1:-}" in
@@ -213,6 +243,9 @@ case "${1:-}" in
     ;;
   check)
     do_check
+    ;;
+  trigger)
+    do_trigger
     ;;
   ""|--help|-h)
     usage

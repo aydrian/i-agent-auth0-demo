@@ -1,0 +1,47 @@
+{% extends "admin/layout.html" %}
+{% block content %}
+<p style="color:#4b5563; font-size: 0.9rem;">
+  Products in the catalog. Set a temporary sale price; a background watchlist agent will see it and may ask the user for purchase approval.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Product</th>
+      <th>MSRP</th>
+      <th>Sale</th>
+      <th>Expires</th>
+      <th style="width: 40%;">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in products %}
+    {% set sale = sales.get(p.id) %}
+    <tr>
+      <td>
+        <div style="font-weight: 600;">{{ p.name }}</div>
+        <div class="product-id">{{ p.id }}</div>
+      </td>
+      <td>${{ "%.2f"|format(p.pricePerUnit) }}</td>
+      <td>{% if sale %}${{ "%.2f"|format(sale.salePrice) }}{% else %}—{% endif %}</td>
+      <td>{% if sale %}{{ sale.expiresAt }}{% else %}—{% endif %}</td>
+      <td>
+        <form class="row-form" method="post" action="/admin/sale">
+          <input type="hidden" name="productId" value="{{ p.id }}">
+          <span>$</span>
+          <input type="number" name="salePrice" step="0.01" min="0.01" placeholder="999.00" required>
+          <span>for</span>
+          <input type="number" name="durationMinutes" min="1" max="1440" value="60" required>
+          <span>mins</span>
+          <button class="btn btn-primary" type="submit">Put on sale</button>
+        </form>
+        {% if sale %}
+        <form method="post" action="/admin/sale/{{ p.id }}/clear" style="display:inline-block; margin-top: 0.4rem;">
+          <button class="btn btn-danger" type="submit">Clear sale</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

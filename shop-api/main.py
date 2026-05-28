@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routers.shop import router as shop_router
 from routers.admin import router as admin_router
+from routers.admin_ui import router as admin_ui_router
 
 app = FastAPI(
     title="Shop Online Demo API",
@@ -29,6 +30,7 @@ if static_path.exists():
 # Include routers
 app.include_router(shop_router, prefix="/api")
 app.include_router(admin_router, prefix="/api/shop")
+app.include_router(admin_ui_router)
 
 
 @app.get("/")
