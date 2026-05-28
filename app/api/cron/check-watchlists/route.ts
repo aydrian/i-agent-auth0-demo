@@ -1,3 +1,4 @@
+import { setAIContext } from "@auth0/ai-vercel";
 import { generateText, stepCountIs, tool } from "ai";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -186,6 +187,13 @@ export async function POST(request: NextRequest) {
         (tools.buyProduct as { inputSchema?: unknown }).inputSchema != null,
     });
 
+    // The Auth0 AI SDK wrapper registers the tool against an AI context.
+    // Without setAIContext, the wrapped tool is silently inert — the model
+    // sees its description but its calls don't actually fire. Use the
+    // watch.id as a synthetic thread id; we're not in chat, but the
+    // wrapper just needs *some* context to hang state on.
+    setAIContext({ threadID: watch.id });
+
     try {
       const result = await generateText({
         model: getLanguageModel(modelId),
@@ -196,7 +204,13 @@ export async function POST(request: NextRequest) {
         tools,
       });
 
-      const toolNames = (result.toolCalls ?? []).map((c) => c.toolName);
+      // v6 of the AI SDK reports toolCalls per-step. If the model called
+      // a tool then ended on a text turn, `result.toolCalls` (the last
+      // step's calls) is empty. Aggregate across all steps.
+      const allToolCalls = (result.steps ?? []).flatMap(
+        (s) => s.toolCalls ?? []
+      );
+      const toolNames = allToolCalls.map((c) => c.toolName);
       const calledBuy = toolNames.includes("buyProduct");
 
       if (calledBuy) {
