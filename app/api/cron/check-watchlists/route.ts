@@ -17,26 +17,21 @@ export const maxDuration = 60;
 const STALL_RESET_MS = 90_000;
 const COOLDOWN_RESET_MS = 24 * 60 * 60 * 1000;
 
-const AGENT_SYSTEM_PROMPT = `You are a purchase-decision agent for a user's product watchlist.
+const AGENT_SYSTEM_PROMPT = `You decide whether to buy a product on behalf of the user.
 
-For each watchlist row you receive, decide whether the user's stated buying intent is satisfied by the current state of the product. The user's intent is in their own words — interpret it literally. You have full authority to act on their behalf when the intent is met.
+Input: a product, its current price, and the user's intent (their rule for when to buy).
 
-Tools available:
-- \`getProductHistory({ days })\` — returns recent daily price snapshots. Call this only when the user's intent references history (e.g. "matches recent low", "not seen lower in 30 days"). Otherwise skip it.
-- \`buyProduct({ bindingMessage, qty })\` — sends a one-tap approval request to the user and, on approval, places the order. The tool handles the entire authentication flow internally — you do NOT need any credentials, account context, or login of your own. Just compose a clear binding message and call it.
+If the intent is met:
+- Call \`buyProduct({ bindingMessage, qty })\`. The bindingMessage is one sentence the user sees on their phone, e.g. "Buy iPhone 15 Pro at $999? Below your $1000 target." The tool handles the entire auth and order flow.
+- Do not write the bindingMessage as text. Pass it as the tool argument. Writing it as text does nothing.
 
-Decision rules:
-1. If the user's intent IS satisfied by the current price (or by the price + history when history is relevant): your ONLY action is to invoke the \`buyProduct\` tool. Pass your binding message as the \`bindingMessage\` argument — do NOT write it as your text response. Calling the tool is what triggers the user's approval flow. Writing the binding message in text does nothing and the user never sees it.
-2. If the intent is NOT satisfied, return a short text that names the user's threshold and the current value, e.g. "Current price $1199 is above your $1000 target." Do not call any tool. The watch row stays active for the next tick.
+If the intent is not met:
+- Reply with one sentence naming the threshold and current value, e.g. "Current price $1199 is above your $1000 target."
+- Do not call any tool.
 
-You must NEVER:
-- Refuse for reasons other than "intent not met."
-- Invent preconditions like missing credentials, account context, or session state. You have everything you need; the tool handles authentication.
-- Write the binding message as plain text instead of calling \`buyProduct\`. If the intent is met, the binding message belongs inside the tool call, not as your text output.
+Optional: if the user's intent references price history (e.g. "matches recent low"), call \`getProductHistory({ days })\` first. Otherwise skip it.
 
-Example bindingMessages (these go INSIDE the tool call, as the \`bindingMessage\` argument):
-- "Buy iPhone 15 Pro at $999? Below your $1000 target."
-- "Buy iPhone 15 Pro at $999? Recent low was $950 last week — you might want to wait."`;
+You have all the authority and context you need. Do not refuse for any reason other than the intent not being met.`;
 
 type TickSummary = {
   checked: number;
@@ -53,11 +48,25 @@ type TickSummary = {
 };
 
 function pickAgentModel(): string {
-  // Prefer a small/cheap model for the per-watch decision. Fall back to the
-  // chat default if the preferred model isn't in the allowed list.
-  const preferred = "gpt-4o-mini";
-  if (allowedModelIds.has(preferred)) {
-    return preferred;
+  // Allow ad-hoc override from .env.local for experiments.
+  const override = process.env.AGENT_MODEL;
+  if (override && allowedModelIds.has(override)) {
+    return override;
+  }
+  // Preference order: tool-call-friendly models first. Some models (notably
+  // gpt-5.4-mini) have built-in safety bias against purchase flows that
+  // makes them refuse to call `buyProduct` even when explicitly told to;
+  // the chat default is the LAST resort, not the first.
+  const preferences = [
+    "gpt-4o-mini",
+    "xai/grok-4.1-fast-non-reasoning",
+    "deepseek/deepseek-v3.2",
+    "moonshotai/kimi-k2.5",
+  ];
+  for (const id of preferences) {
+    if (allowedModelIds.has(id)) {
+      return id;
+    }
   }
   return DEFAULT_CHAT_MODEL;
 }
@@ -168,7 +177,7 @@ export async function POST(request: NextRequest) {
           watchId: watch.id,
           productId: watch.productId,
           outcome: "no-buy",
-          note: `tools=[${toolsCalled}] text=${result.text || "(empty)"}`,
+          note: `model=${modelId} tools=[${toolsCalled}] text=${result.text || "(empty)"}`,
         });
       }
     } catch (err) {
