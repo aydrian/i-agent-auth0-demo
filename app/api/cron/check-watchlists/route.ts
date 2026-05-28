@@ -24,7 +24,11 @@ Input: a product, its current price, and the user's intent (their rule for when 
 Your output is EITHER a tool call OR one sentence of plain text. Never both.
 
 If the intent is satisfied by the current price:
-  → Invoke the \`buyProduct\` tool. Set \`bindingMessage\` to one sentence the user will see on their phone explaining what they're approving and why (mention the price and how it satisfies their rule). **The bindingMessage MUST be 64 characters or fewer** — Auth0 rejects longer ones. Be tight. Set \`qty\` to 1 unless the user said otherwise. Do not output any text alongside the tool call — the tool call IS the output.
+  → Invoke the \`buyProduct\` tool. Set \`bindingMessage\` to one sentence the user will see on their phone explaining what they're approving and why (mention the price and how it satisfies their rule). **bindingMessage rules** (Auth0 enforces these — violations get rejected):
+    • MAX 64 characters.
+    • Allowed: letters, digits, whitespace, and the punctuation \`+ - _ . , : #\`.
+    • NOT allowed: \`$\`, \`?\`, parens, quotes, slashes, etc. Spell out "USD" if you must reference currency, or just write the number with no symbol (e.g. "999" not "$999").
+  Set \`qty\` to 1 unless the user said otherwise. Do not output any text alongside the tool call — the tool call IS the output.
 
 If the intent is not satisfied:
   → Reply with one short sentence stating the user's threshold and the current price. Do not call any tool.
@@ -160,16 +164,25 @@ export async function POST(request: NextRequest) {
         tools,
       });
 
-      // v6 of the AI SDK reports toolCalls per-step. If the model called
-      // a tool then ended on a text turn, `result.toolCalls` (the last
-      // step's calls) is empty. Aggregate across all steps.
-      const allToolCalls = (result.steps ?? []).flatMap(
-        (s) => s.toolCalls ?? []
+      // The buyProduct tool returns a structured `{ ok, ... }` instead of
+      // throwing on CIBA failure. We look at tool *results* (across all
+      // steps; the SDK reports them per-step) to classify the outcome.
+      const allToolResults = (result.steps ?? []).flatMap(
+        (s) => (s as { toolResults?: unknown[] }).toolResults ?? []
       );
-      const toolNames = allToolCalls.map((c) => c.toolName);
-      const calledBuy = toolNames.includes("buyProduct");
+      const buyResults = allToolResults.filter(
+        (r) =>
+          (r as { toolName?: string }).toolName === "buyProduct"
+      ) as Array<{
+        toolName: string;
+        output?:
+          | { ok: true; orderId: string }
+          | { ok: false; error: string; message?: string };
+      }>;
+      const successful = buyResults.find((r) => r.output?.ok === true);
+      const failedResults = buyResults.filter((r) => r.output?.ok === false);
 
-      if (calledBuy) {
+      if (successful) {
         summary.triggered += 1;
         summary.purchased += 1;
         summary.details.push({
@@ -178,14 +191,48 @@ export async function POST(request: NextRequest) {
           outcome: "purchased",
           note: `${result.text || "(approved)"}`,
         });
+      } else if (failedResults.length > 0) {
+        // The model attempted buyProduct one or more times but each came
+        // back ok:false. Use the LAST failure's reason to classify.
+        summary.triggered += 1;
+        const last = failedResults[failedResults.length - 1].output as {
+          ok: false;
+          error: string;
+          message?: string;
+        };
+        const isDenied =
+          last.error === "access_denied" ||
+          last.error === "expired_token" ||
+          last.error === "timeout";
+        if (isDenied) {
+          await setWatchStatus(watch.id, "denied");
+          summary.denied += 1;
+          summary.details.push({
+            watchId: watch.id,
+            productId: watch.productId,
+            outcome: "denied",
+            note: `${last.error}: ${last.message ?? ""}`.trim(),
+          });
+        } else {
+          await setWatchStatus(watch.id, "error");
+          summary.errors += 1;
+          summary.details.push({
+            watchId: watch.id,
+            productId: watch.productId,
+            outcome: "error",
+            note: `${last.error}: ${last.message ?? ""}`.trim(),
+          });
+        }
       } else {
-        const toolsCalled =
-          toolNames.length > 0 ? toolNames.join(",") : "none";
+        // No buyProduct attempts at all — agent decided intent wasn't met.
+        const allToolNames = (result.steps ?? [])
+          .flatMap((s) => s.toolCalls ?? [])
+          .map((c) => c.toolName);
         summary.details.push({
           watchId: watch.id,
           productId: watch.productId,
           outcome: "no-buy",
-          note: `model=${modelId} tools=[${toolsCalled}] text=${result.text || "(empty)"}`,
+          note: `model=${modelId} tools=[${allToolNames.join(",") || "none"}] text=${result.text || "(empty)"}`,
         });
       }
     } catch (err) {
