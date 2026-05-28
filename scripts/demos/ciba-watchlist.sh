@@ -242,10 +242,28 @@ do_trigger() {
 
   note "POST ${app_base}/api/cron/check-watchlists ..."
   # The cron route may block up to ~90s waiting on Guardian approval.
-  curl -fsS --max-time 100 -X POST \
+  # Capture body separately from status so we can show error responses
+  # instead of swallowing them with `curl -f`.
+  local response_file http_code
+  response_file=$(mktemp)
+  http_code=$(curl -sS --max-time 100 -X POST \
     -H "Authorization: Bearer $CRON_SECRET" \
-    "${app_base}/api/cron/check-watchlists" \
-    | jq .
+    -o "$response_file" \
+    -w "%{http_code}" \
+    "${app_base}/api/cron/check-watchlists" || echo "000")
+
+  if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+    jq . "$response_file"
+    rm -f "$response_file"
+  else
+    fail "cron returned HTTP $http_code"
+    if [ -s "$response_file" ]; then
+      info "response body:"
+      sed 's/^/    /' "$response_file" >&2
+    fi
+    rm -f "$response_file"
+    exit 1
+  fi
 }
 
 # ---------------------------------------------------------------------------

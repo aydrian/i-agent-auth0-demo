@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { ChatbotError } from "@/lib/errors";
@@ -196,13 +196,15 @@ export async function resetAgedDeniedAndErrorWatches(
 ): Promise<void> {
   try {
     const cutoff = new Date(Date.now() - olderThanMs);
-    await db.execute(sql`
-      UPDATE "Watchlist"
-      SET status = 'active'
-      WHERE status IN ('denied', 'error')
-        AND "notifiedAt" IS NOT NULL
-        AND "notifiedAt" < ${cutoff}
-    `);
+    await db
+      .update(watchlist)
+      .set({ status: "active" })
+      .where(
+        and(
+          inArray(watchlist.status, ["denied", "error"]),
+          lt(watchlist.notifiedAt, cutoff)
+        )
+      );
   } catch (_) {
     throw new ChatbotError(
       "bad_request:database",
