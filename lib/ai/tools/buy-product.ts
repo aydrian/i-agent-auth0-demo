@@ -22,13 +22,13 @@ export const buyProduct = (params: BuyProductParams) => {
   return withApproval(
     tool({
       description:
-        "Ask the user to approve buying this product via Auth0 Guardian push. Returns the order on approval; throws on denial/expiry. Compose the bindingMessage to explain to the user (on their phone) why you're asking now.",
+        "Send the user a one-tap approval request for this purchase. Returns the order details when the user approves; throws if they decline or the request expires. The bindingMessage is the single sentence the user sees while deciding — make it explain price and any relevant context. The tool handles authentication and order placement internally; you do not need any credentials of your own.",
       inputSchema: z.object({
         bindingMessage: z
           .string()
           .min(1)
           .describe(
-            "One concise sentence shown on Guardian. Include price and any history nuance."
+            "One concise sentence shown to the user when deciding whether to approve. Include the price and any relevant nuance."
           ),
         qty: z.number().int().positive().default(1),
       }),

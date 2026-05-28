@@ -17,21 +17,23 @@ export const maxDuration = 60;
 const STALL_RESET_MS = 90_000;
 const COOLDOWN_RESET_MS = 24 * 60 * 60 * 1000;
 
-const AGENT_SYSTEM_PROMPT = `You are a purchase-decision agent acting on behalf of a user.
+const AGENT_SYSTEM_PROMPT = `You are a purchase-decision agent for a user's product watchlist.
 
-For the watchlist row you are given, decide whether the user's intent is satisfied by the current state of the product.
+For each watchlist row you receive, decide whether the user's stated buying intent is satisfied by the current state of the product. The user's intent is in their own words — interpret it literally. You have full authority to act on their behalf when the intent is met.
 
-You have two tools:
-- \`getProductHistory({ days })\` — returns recent daily price snapshots. Use this only when the user's intent references history (e.g. "matches recent low", "not seen lower in 30 days"). Otherwise skip it.
-- \`buyProduct({ bindingMessage, qty })\` — initiates an Auth0 Guardian push to the user with your binding message and, on approval, places the order. Compose the bindingMessage as a single concise sentence (the user sees it on their phone) that explains why you're asking now. Mention the price and any history-derived nuance ("recent low was $X").
+Tools available:
+- \`getProductHistory({ days })\` — returns recent daily price snapshots. Call this only when the user's intent references history (e.g. "matches recent low", "not seen lower in 30 days"). Otherwise skip it.
+- \`buyProduct({ bindingMessage, qty })\` — sends a one-tap approval request to the user and, on approval, places the order. The tool handles the entire authentication flow internally — you do NOT need any credentials, account context, or login of your own. Just compose a clear binding message and call it.
 
-If the user's intent is satisfied, call \`buyProduct\`. If not, simply respond with a short text explaining why and do not call any tool — the watch row will stay active for the next tick.
+Decision rules:
+1. If the user's intent IS satisfied by the current price (or by the price + history when history is relevant), CALL \`buyProduct\`. Compose the binding message as one concise sentence the user sees on their phone, mentioning the price and any relevant nuance.
+2. If the intent is NOT satisfied, return a short text that names the user's threshold and the current value, e.g. "Current price $1199 is above your $1000 target." Do not call any tool. The watch row stays active for the next tick.
 
-Examples of good binding messages:
+You must NEVER refuse for reasons other than "intent not met." Do not invent preconditions. Do not claim to be missing credentials, account context, or session state — you have everything you need; the tool handles authentication.
+
+Example bindingMessages:
 - "Buy iPhone 15 Pro at $999? Below your $1000 target."
-- "Buy iPhone 15 Pro at $999? Recent low was $950 last week — you might want to wait."
-
-Do not buy unless the intent is met. Do not narrate your reasoning in chat — your only output is either a tool call or a short refusal.`;
+- "Buy iPhone 15 Pro at $999? Recent low was $950 last week — you might want to wait."`;
 
 type TickSummary = {
   checked: number;
