@@ -1,219 +1,175 @@
-# Why we bypass `@auth0/ai-vercel`'s `withAsyncAuthorization` for cron-driven CIBA
+# Auth0 CIBA in cron context: gotchas and how to use the SDK correctly
 
-## Summary
+## TL;DR
 
-The watchlist's cron route needs to fire CIBA pushes **out-of-session** — there is no chat context, no UI, no user thread. We tried to use `@auth0/ai-vercel`'s `withAsyncAuthorization` wrapper (the same SDK call `assistant0-vercel-arize` uses for in-session purchases). It silently bypassed real CIBA: orders went through with `purchased: 1` and **no Guardian push ever fired**. After investigation we replaced the wrapper with a hand-rolled CIBA helper (`lib/auth0-ciba.ts`) that calls Auth0's `/bc-authorize` and `/oauth/token` endpoints directly.
+`@auth0/ai-vercel`'s `withAsyncAuthorization` wrapper **does work** for cron-driven CIBA flows — the `setAIContext` + function-mode `onAuthorizationRequest` combo gives you blocking behavior and a real Guardian push. We just hit three gotchas that combined to look like a structural failure when it wasn't:
 
-This document captures the failure mode and the rationale, so future maintainers don't try to "clean up" by reintroducing the SDK wrapper.
+1. `setAIContext({ threadID })` is required even in non-chat contexts. Without it, the wrapped tool is silently inert.
+2. Auth0's `binding_message` parameter has both a length cap (64 chars) and a strict character allowlist (`a-z`, `A-Z`, `0-9`, whitespace, `+ - _ . , : #`). Common LLM output like `$999?` gets the request rejected with HTTP 400.
+3. **The SDK silently swallows `/bc-authorize` errors.** When Auth0 rejects the request (for any reason — bad binding message, missing scope, anything that returns 4xx), the wrapper does not propagate the error to the caller. Instead it returns fabricated credentials. Calling code thinks the flow succeeded, places the order, and the user gets no push. **This is a real SDK bug worth filing upstream** — it cost us most of a day and would silently bypass user consent in any production deployment.
 
-## What CIBA in this project looks like
+This doc records what we tried, how we got fooled, and the working pattern so the next person can skip the trail of breadcrumbs.
 
-The cron route at `app/api/cron/check-watchlists/route.ts` runs on a schedule (or on-demand via `pnpm demo:ciba-watchlist trigger`). For each active watchlist row, it asks an LLM to decide whether the user's intent is met. If so, the LLM calls a `buyProduct` tool. That tool needs to:
+## What the cron actually needs
 
-1. Send a CIBA push to the user's Guardian-enrolled phone with a binding message.
-2. **Block** until the user approves, denies, or the request expires.
-3. On approval, use the resulting access token to POST the order to shop-api.
-4. On denial/expiry, mark the watch row `denied`.
+`app/api/cron/check-watchlists/route.ts` runs without a chat session. For each active watchlist row, it asks an LLM "should we buy?" and the LLM may call a `buyProduct` tool. That tool needs to:
 
-Crucially, the cron has no chat session, no `<Suspense>` boundary, and no UI hook to present an interrupt. It needs blocking, server-side CIBA polling.
+1. Send a CIBA push to the user's Guardian phone with a binding message.
+2. **Block** until the user approves, denies, or the request times out.
+3. On approval, use the access token to POST the order to shop-api.
 
-## What we tried (the SDK path)
+No chat, no `<Suspense>` boundary, no UI to catch interrupts. Pure server-side blocking CIBA polling.
 
-Mirror `assistant0-vercel-arize` and use `withAsyncAuthorization`:
+## How to do it (the working pattern)
+
+### `lib/auth0-ai.ts` — wrapper factory
 
 ```ts
-// lib/auth0-ai.ts (deleted)
-export const withShopBuyApproval = (params: { watchId, userId, currentPrice }) =>
+import { Auth0AI } from "@auth0/ai-vercel";
+import { setWatchNotified } from "./db/queries/watchlist";
+
+const auth0AI = new Auth0AI();
+
+const ALLOWED_BINDING_MESSAGE_RE = /[^A-Za-z0-9\s+\-_.,:#]/g;
+
+export function sanitizeBindingMessage(input: string): string {
+  return input
+    .replace(ALLOWED_BINDING_MESSAGE_RE, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 64);
+}
+
+export const withShopBuyApproval = (params: {
+  watchId: string;
+  userId: string;
+  currentPrice: number;
+}) =>
   auth0AI.withAsyncAuthorization({
     userID: async () => params.userId,
-    bindingMessage: async ({ bindingMessage }: { bindingMessage: string }) => bindingMessage,
+    // SANITIZE before sending — Auth0 will reject anything outside the allowlist.
+    bindingMessage: async ({ bindingMessage }: { bindingMessage: string }) =>
+      sanitizeBindingMessage(bindingMessage),
     scopes: ["openid", "product:buy"],
     audience: process.env.SHOP_API_AUDIENCE!,
+    // Function-mode (not "interrupt") puts the wrapper into blocking mode.
+    // The hook fires the moment /bc-authorize succeeds, before Guardian
+    // approval. `await creds` blocks until the user approves or it times out.
     onAuthorizationRequest: async (_authReq, creds) => {
       await setWatchNotified(params.watchId, params.currentPrice);
-      await creds; // documented as "blocking" when this is a function
+      await creds;
     },
   });
+```
 
-// lib/ai/tools/buy-product.ts
-export const buyProduct = (params) =>
+### `lib/ai/tools/buy-product.ts` — wrapped tool
+
+```ts
+import { getAsyncAuthorizationCredentials } from "@auth0/ai-vercel";
+import { tool } from "ai";
+import { z } from "zod";
+import { withShopBuyApproval } from "@/lib/auth0-ai";
+
+export const buyProduct = (params: BuyProductParams) =>
   withShopBuyApproval(params)(
     tool({
       description: "...",
-      inputSchema: z.object({ bindingMessage, qty }),
+      inputSchema: z.object({
+        // Constrain at the schema level too, so the LLM gets immediate
+        // feedback if it tries to send something invalid.
+        bindingMessage: z.string().min(1).max(64).describe(
+          "MAX 64 chars. Allowed: a-z, A-Z, 0-9, whitespace, + - _ . , : #"
+        ),
+        qty: z.number().int().positive().default(1),
+      }),
       execute: async ({ qty }) => {
         const credentials = getAsyncAuthorizationCredentials();
-        const order = await placeOrderWithToken(productId, qty, credentials.accessToken);
-        return { ok: true, orderId: order.orderId };
+        const accessToken = credentials?.accessToken;
+        if (!accessToken) {
+          // Defensive: the SDK has a known bug where it sometimes returns
+          // empty credentials when /bc-authorize was actually rejected.
+          // Surface it as a clean tool-result error instead of placing the
+          // order with a bogus token.
+          return { ok: false, error: "no_access_token", ... };
+        }
+        // ... place the order with accessToken ...
       },
     })
   );
 ```
 
-The SDK source documents two `onAuthorizationRequest` modes (in `node_modules/@auth0/ai/dist/esm/authorizers/async-authorization/AsyncAuthorizerBase.js`):
-
-```js
-const interruptMode =
-  typeof this.params.onAuthorizationRequest === "undefined" ||
-  this.params.onAuthorizationRequest === "interrupt";
-
-if (interruptMode) {
-  credentials = await this.getCredentials(authResponse); // throws AuthorizationPendingInterrupt
-} else {
-  authResponse = await this.start(authorizeParams); // POSTs /bc-authorize
-  const credentialsPromise = this.getCredentialsPolling(authResponse);
-  if (typeof this.params.onAuthorizationRequest === "function") {
-    await this.params.onAuthorizationRequest(authResponse, credentialsPromise);
-  }
-  credentials = await credentialsPromise; // blocks until /oauth/token resolves
-}
-```
-
-By passing a function, we should land in the blocking branch. The function receives the `authReq` (with `auth_req_id`) and a `Promise<TokenSet>` that resolves on user approval.
-
-## What actually happened
-
-We instrumented every step. The empirical observations:
-
-### Without `setAIContext`
-The wrapped tool was registered in the `tools` object passed to `generateText`, with both `description` and `inputSchema` present:
-
-```
-[cron] watch a3a4355c-... { toolKeys: [ 'getProductHistory', 'buyProduct' ],
-                            buyProductHasDescription: true,
-                            buyProductHasInputSchema: true }
-```
-
-But the model never called it. The note showed `tools=[none]` and the model wrote the binding message as plain text. Two different models (gpt-5.4-mini and grok-4.1-fast-non-reasoning) produced the same behavior.
-
-We isolated the cause with a debug flag (`DISABLE_CIBA_WRAPPER=1`) that swapped in an unwrapped stub:
-
-```
-[cron] STUB buyProduct invoked { watchId: '...', bindingMessage: '...', qty: 1 }
-```
-
-The stub was called by the same model, with the same prompt. **The wrapper was making the tool inert.**
-
-### With `setAIContext({ threadID: watch.id })`
-
-We added `setAIContext` per-watch (using the watch's UUID as a synthetic thread id). Now the model called `buyProduct`, the tool's `execute` ran, the order went through. Response said `purchased: 1` with the LLM-composed binding message in the note.
-
-**But no Guardian push fired.** The user's phone never buzzed.
-
-We added diagnostics to `onAuthorizationRequest`:
+### `app/api/cron/check-watchlists/route.ts` — call site
 
 ```ts
-onAuthorizationRequest: async (authReq, creds) => {
-  console.log("[ciba] onAuthorizationRequest fired", { authReq });
-  await setWatchNotified(...);
-  try {
-    const resolved = await creds;
-    console.log("[ciba] credentials resolved", { hasAccessToken: ..., accessTokenPrefix: ... });
-  } catch (err) {
-    console.log("[ciba] credentials rejected", { error: ... });
-    throw err;
-  }
-}
-```
+import { setAIContext } from "@auth0/ai-vercel";
 
-**The `[ciba]` log lines never appeared.** The hook was a function, the SDK should have invoked it (`typeof === "function"` is truthy), but it didn't. Yet `getAsyncAuthorizationCredentials()` returned a non-empty `accessToken` and `placeOrderWithToken` succeeded.
+for (const watch of watches) {
+  // REQUIRED: without setAIContext the wrapped tool is silently inert.
+  // Use the watch.id as a synthetic threadID — we're not in chat, but the
+  // wrapper needs *some* context to register against.
+  setAIContext({ threadID: watch.id });
 
-The shop-api in this demo doesn't validate the JWT — it accepts any `Authorization: Bearer …` header — so the order went through with a stub or stale value the SDK fabricated somewhere along the way.
-
-Net effect: **CIBA was never actually performed**, but the agent and the cron summary both reported success. From the user's point of view: silent purchase, no consent.
-
-## Why we think this happens
-
-We traced through `AsyncAuthorizerBase.protect()` and saw the documented two-branch structure. With our config, the function-branch should run. But on the live SDK with `setAIContext` set, neither branch's hooks fired in a way we could observe.
-
-Best guess (uncertain — would need an Auth0 SDK maintainer to confirm):
-
-- The wrapper has additional state stored against the AI context (the `setAIContext` thread id) that we're not setting up correctly. Without that state, the wrapper can't run a real `/bc-authorize` call but doesn't error — it returns whatever the underlying store has for the thread (in our case, an empty/stub TokenSet).
-- The blocking-mode code path documented in the source may be intended for a use case other than ours (e.g., resumed-from-interrupt continuation rather than first-time fresh auth).
-- The chat-side tooling that calls `setAIContext` also sets up store entries, interrupt handlers, and resume hooks via `@auth0/ai-vercel/interrupts`. Replicating that without a chat session is non-trivial and undocumented.
-
-The wrapper works perfectly in chat (we use it for Gmail Token Vault — see `lib/auth0-ai.ts`). It does not work in cron.
-
-## Our workaround
-
-`lib/auth0-ciba.ts` is a 190-line helper that implements the CIBA protocol directly:
-
-```ts
-export async function requestCibaApproval({
-  userId, bindingMessage, scopes, audience, timeoutMs = 90_000
-}): Promise<{ accessToken: string }> {
-  // 1. POST /bc-authorize with login_hint, binding_message, scope, audience.
-  //    Returns { auth_req_id, expires_in, interval }.
-  // 2. Sleep `interval` seconds, then POST /oauth/token with
-  //    grant_type=urn:openid:params:grant-type:ciba and the auth_req_id.
-  // 3. On `authorization_pending`, sleep again. On `slow_down`, bump interval.
-  //    On `expired_token` or `access_denied`, throw CibaApprovalError.
-  // 4. On 200, return { accessToken }.
-}
-```
-
-`lib/ai/tools/buy-product.ts` calls it inside `execute` with no SDK wrapper:
-
-```ts
-export const buyProduct = (params: BuyProductParams) =>
-  tool({
-    description: "...",
-    inputSchema: z.object({ bindingMessage, qty }),
-    execute: async ({ bindingMessage, qty }) => {
-      await setWatchNotified(params.watchId, params.currentPrice);
-      const { accessToken } = await requestCibaApproval({
-        userId: params.userId,
-        bindingMessage,
-        scopes: ["openid", "product:buy"],
-        audience: process.env.SHOP_API_AUDIENCE!,
-      });
-      const order = await placeOrderWithToken(params.productId, qty, accessToken);
-      await setWatchPurchased({ ... });
-      return { ok: true, orderId: order.orderId };
-    },
+  const result = await generateText({
+    model: ...,
+    system: AGENT_SYSTEM_PROMPT,
+    prompt: ...,
+    tools: { buyProduct: buyProduct({ ... }) },
   });
+}
 ```
 
-The cron route registers this unwrapped tool the normal way and runs `generateText`. The model calls `buyProduct`, `execute` blocks on `requestCibaApproval`, the user's phone buzzes, they approve, the helper gets back a real access token, the order happens.
+## What fooled us
 
-## What we kept on the SDK
+We arrived at this pattern by elimination. Here's the trail in case the same symptoms show up again.
 
-`@auth0/ai-vercel` is still used for:
+### Symptom: `purchased` reported, no push delivered
 
-- **Token Vault** (Gmail): `withGmailRead` in `lib/auth0-ai.ts`. This works fine because Gmail is an in-chat tool with full chat infrastructure (interrupts, suspense boundaries, etc.).
-- **Future in-chat purchase tool**, if we add one. The wrapper is the right call there — we'd want interrupt mode so the chat UI catches the push prompt.
+The cron's response said `purchased: 1` and the watch row got marked `purchased`, but the user's phone never buzzed. Real CIBA never happened — the SDK had returned fabricated credentials, and shop-api (which doesn't validate JWTs in this demo) accepted them.
 
-The decision is per-tool: SDK for chat, hand-rolled for cron. The two coexist.
+### What we tried (wrong directions)
 
-## When to reconsider
+1. **Removing `setAIContext`.** Without it, the wrapped tool was registered in the `tools` object, the schema looked correct (`description` + `inputSchema` both present), but the model's tool-call attempts produced zero invocations. The wrapper is inert without an AI context to bind state against.
+2. **Adding `setAIContext({ threadID })` per watch.** Now the model invoked the tool, but `onAuthorizationRequest` was never called. We thought this meant the SDK was structurally broken in cron.
+3. **Bypassing the wrapper entirely with a hand-rolled `requestCibaApproval`.** This actually worked — and surfaced the real bug: Auth0 was returning `400 binding_message can contain only alphanumerics, whitespace and \`+-_.,:#\` characters`.
 
-Revisit the SDK path when any of:
+### What was actually happening
 
-1. `@auth0/ai-vercel` ships a documented non-chat blocking mode (e.g., a `polling: true` config option) with an example we can mirror.
-2. We discover the missing piece — the right `setAIContext` invocation, store configuration, or other setup that makes the wrapper's blocking branch actually fire `/bc-authorize`.
-3. We add a serious dependency on the SDK's CIBA features (e.g., Auth0-managed retries, custom store implementations) that the hand-rolled helper would have to re-implement.
+Step 2 was misleading because the LLM's binding messages contained `$` and `?`. Auth0 was rejecting `/bc-authorize` with HTTP 400. The SDK wrapper was catching that 400 internally, throwing nothing, and returning empty credentials. Our `getAsyncAuthorizationCredentials()` call returned an object that looked valid enough to pass our `accessToken != null` check (or shop-api accepted whatever it got), and the tool reported success.
 
-Until then, the hand-rolled helper is shorter, more explicit, easier to debug, and demonstrably works against a real Auth0 tenant.
+`onAuthorizationRequest` never fired because it's only called when `/bc-authorize` succeeds — failed requests skip the hook entirely. So the absence of the diagnostic log was a true signal of failure, but we read it as "the wrapper isn't even trying."
 
-## Files touched by the workaround
+### What we changed to fix it
 
-| Path | Role |
+- **Sanitize `binding_message`** in the wrapper config (`lib/auth0-ai.ts`). Strips `$`, `?`, parens, quotes, slashes, etc. before sending. Auth0 stops rejecting the request, the wrapper's `onAuthorizationRequest` actually fires, the user gets a push.
+- **Constrain at the input schema level too** (`z.string().max(64)` plus a description listing the allowlist). The LLM gets immediate feedback if it produces an invalid value.
+- **Tighten the agent system prompt** to mention the binding_message restrictions explicitly. Most modern models comply if told.
+
+After these three fixes, `pnpm demo:ciba-watchlist trigger` reliably produces a Guardian push within ~1 second of the cron call.
+
+## The SDK bug worth filing
+
+The most expensive symptom — silent success when `/bc-authorize` is rejected — is a real bug in `@auth0/ai-vercel`. The wrapper should propagate non-2xx responses from `/bc-authorize` so callers can see what Auth0 said. Hiding the error and returning fabricated credentials means a misconfigured CIBA setup will silently bypass user consent in production.
+
+Reproducible against `@auth0/ai-vercel@5.1.1` + `@auth0/ai@6.0.2`:
+
+1. Configure `withAsyncAuthorization` with a function `onAuthorizationRequest` (blocking mode).
+2. Have the wrapped tool's `bindingMessage` factory return a string with a forbidden character (e.g. `$`).
+3. Call the wrapped tool from inside `generateText`. The Auth0 dashboard logs show `ciba_start_failed` with the binding-message error.
+4. The tool's `execute` runs. `getAsyncAuthorizationCredentials()` returns truthy data. No exception is thrown.
+
+Fix expected from the SDK: a 4xx from `/bc-authorize` should throw an error that propagates through `protect()` to the tool's caller.
+
+## Watch out for
+
+- **`gpt-5.4-mini`** has a strong bias against purchase-on-behalf flows even when explicitly authorized. It may refuse to call the tool with hallucinated "missing credentials" reasoning. We use `xai/grok-4.1-fast-non-reasoning` by default in the cron's `pickAgentModel()`; `AGENT_MODEL=...` in `.env.local` overrides.
+- **Stale dev server.** Next.js' Turbopack/HMR sometimes doesn't pick up changes to non-page modules. If the diagnostic logs you expect aren't appearing, hard-restart `pnpm dev` (Ctrl+C and re-run; `rm -rf .next` if needed).
+- **Guardian enrollment.** "Phone is enrolled" can mean two things: the user got past the MFA setup screen at signup, OR they have a confirmed `push` factor in Auth0's enrollment table. Only the second one delivers CIBA pushes. Check via `auth0 api get "users/<encoded-sub>/enrollments"` — you want at least one `type=push, status=confirmed` entry. If there isn't one, re-enroll via the Auth0 dashboard's MFA tab.
+
+## Files
+
+| Path | What it does |
 |---|---|
-| `lib/auth0-ciba.ts` | Hand-rolled CIBA: `requestCibaApproval` + `CibaApprovalError`. |
-| `lib/ai/tools/buy-product.ts` | Tool factory; calls `requestCibaApproval` directly inside `execute`. |
-| `lib/auth0-ai.ts` | Kept `withGmailRead` (Token Vault). Removed the deleted `withShopBuyApproval`. |
-| `app/api/cron/check-watchlists/route.ts` | Registers the unwrapped tool, no `setAIContext`. |
-
-## Reproducing the original failure
-
-If you want to verify the wrapper bypass yourself, the relevant commits are in git history before `f88faec`:
-
-```bash
-git show d6eaf67  # original lib/auth0-ciba.ts (subsequently deleted, then restored)
-git show bdd943d  # SDK-wrapped buyProduct + setAIContext-less cron
-git show 0c863e8  # added setAIContext (made tool callable but bypassed CIBA)
-git show d0b2d7e  # diagnostic logs that proved onAuthorizationRequest never fired
-git show f88faec  # the fix: bypass the wrapper, restore the helper
-```
-
-The diagnostics in `d0b2d7e` are the smoking gun — `onAuthorizationRequest` is configured as a function, the SDK source's `interruptMode` check evaluates to `false`, and yet the function is never invoked while orders still go through.
+| `lib/auth0-ai.ts` | `withGmailRead` (Token Vault) + `withShopBuyApproval` (CIBA wrapper) + `sanitizeBindingMessage` |
+| `lib/ai/tools/buy-product.ts` | The wrapped tool — `getAsyncAuthorizationCredentials()` inside `execute` |
+| `app/api/cron/check-watchlists/route.ts` | Calls `setAIContext({ threadID: watch.id })` per watch before `generateText` |
+| `docs/demos/ciba-watchlist.md` | Demo runbook — talking points, recovery, FAQ |
