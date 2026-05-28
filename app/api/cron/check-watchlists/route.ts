@@ -21,17 +21,17 @@ const AGENT_SYSTEM_PROMPT = `You decide whether to buy a product on behalf of th
 
 Input: a product, its current price, and the user's intent (their rule for when to buy).
 
-If the intent is met:
-- Call \`buyProduct({ bindingMessage, qty })\`. The bindingMessage is one sentence the user sees on their phone, e.g. "Buy iPhone 15 Pro at $999? Below your $1000 target." The tool handles the entire auth and order flow.
-- Do not write the bindingMessage as text. Pass it as the tool argument. Writing it as text does nothing.
+Your output is EITHER a tool call OR one sentence of plain text. Never both.
 
-If the intent is not met:
-- Reply with one sentence naming the threshold and current value, e.g. "Current price $1199 is above your $1000 target."
-- Do not call any tool.
+If the intent is satisfied by the current price:
+  → Invoke the \`buyProduct\` tool. Set \`bindingMessage\` to one sentence the user will see on their phone explaining what they're approving and why (mention the price and how it satisfies their rule). Set \`qty\` to 1 unless the user said otherwise. Do not output any text alongside the tool call — the tool call IS the output.
 
-Optional: if the user's intent references price history (e.g. "matches recent low"), call \`getProductHistory({ days })\` first. Otherwise skip it.
+If the intent is not satisfied:
+  → Reply with one short sentence stating the user's threshold and the current price. Do not call any tool.
 
-You have all the authority and context you need. Do not refuse for any reason other than the intent not being met.`;
+Optional: if the user's intent references price history (phrases like "recent low", "lowest in N days"), call \`getProductHistory\` first to inform your decision. Otherwise skip it.
+
+Authority: you act on the user's behalf. The \`buyProduct\` tool handles authentication and order placement internally — you have no need for credentials, sessions, or login of your own. Do not refuse for any reason other than the user's intent being unmet.`;
 
 type TickSummary = {
   checked: number;
@@ -140,6 +140,29 @@ export async function POST(request: NextRequest) {
     const currentPrice =
       priced.product.salePrice ?? priced.product.pricePerUnit;
 
+    const tools = {
+      getProductHistory: getProductHistory({ productId: watch.productId }),
+      buyProduct: buyProduct({
+        watchId: watch.id,
+        userId: watch.userId,
+        productId: watch.productId,
+        currentPrice,
+      }),
+    };
+
+    // Diagnostic: confirm the wrapped buyProduct tool has the AI-SDK shape
+    // the model expects. If `inputSchema` or `description` is missing, the
+    // wrapper is hiding the tool from the model.
+    console.log("[cron] watch", watch.id, {
+      modelId,
+      toolKeys: Object.keys(tools),
+      buyProductHasDescription:
+        typeof (tools.buyProduct as { description?: unknown }).description ===
+        "string",
+      buyProductHasInputSchema:
+        (tools.buyProduct as { inputSchema?: unknown }).inputSchema != null,
+    });
+
     try {
       const result = await generateText({
         model: getLanguageModel(modelId),
@@ -147,15 +170,7 @@ export async function POST(request: NextRequest) {
         prompt: buildWatchPrompt(watch, priced),
         stopWhen: stepCountIs(3),
         temperature: 0,
-        tools: {
-          getProductHistory: getProductHistory({ productId: watch.productId }),
-          buyProduct: buyProduct({
-            watchId: watch.id,
-            userId: watch.userId,
-            productId: watch.productId,
-            currentPrice,
-          }),
-        },
+        tools,
       });
 
       const toolNames = (result.toolCalls ?? []).map((c) => c.toolName);
