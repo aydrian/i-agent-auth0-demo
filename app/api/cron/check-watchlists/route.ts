@@ -1,3 +1,4 @@
+import { setAIContext } from "@auth0/ai-vercel";
 import { generateText, stepCountIs } from "ai";
 import { type NextRequest, NextResponse } from "next/server";
 import { allowedModelIds, DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
@@ -153,6 +154,11 @@ export async function POST(request: NextRequest) {
         currentPrice,
       }),
     };
+
+    // The wrapped buyProduct tool requires AI context to be visible to the
+    // model. Use the watch.id as a synthetic threadID — we're not in chat,
+    // but the wrapper needs *some* context to register against.
+    setAIContext({ threadID: watch.id });
 
     try {
       const result = await generateText({
