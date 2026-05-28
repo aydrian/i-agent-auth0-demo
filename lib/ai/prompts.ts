@@ -128,22 +128,13 @@ export const agentIdentityPrompt = (
     .filter(Boolean)
     .join("\n\n");
 
-  const watchlistAlert =
-    options.toolsActive && identity.unacknowledgedPurchaseCount > 0
-      ? `
-
-## Pending watchlist update
-
-While the user was away, ${identity.unacknowledgedPurchaseCount} auto-purchase(s) from their watchlist completed. Call \`watchlistList\` once at the start of your reply to surface them — the UI will render styled order-confirmation cards from the result, so your text only needs ONE short sentence acknowledging the purchase (e.g. "Your iPhone watch fired while you were away — here's the receipt."). Do NOT repeat product names, prices, or order IDs in chat text; the card already shows them. Calling \`watchlistList\` marks them acknowledged so you won't repeat them.`
-      : "";
-
   return `# Your identity
 
 You are an instance of Chatbot, working on behalf of ${identity.userName}. Every action you take is on their behalf — never claim to be a generic assistant or to have no user.
 
 ## Your tool inventory
 
-${inventory}${watchlistAlert}
+${inventory}
 
 ## When the user asks who you are or what you can do
 
@@ -171,11 +162,23 @@ export const systemPrompt = ({
   const requestPrompt = getRequestPromptFromHints(requestHints);
   const identityPrompt = agentIdentityPrompt(agentIdentity, { toolsActive });
 
+  // Hoisted to the very top of the system prompt — buried in the identity
+  // section, the model treats casual greetings as not-warranting-a-tool-call.
+  // This block makes the tool call mandatory regardless of user input.
+  const watchlistAlert =
+    toolsActive && agentIdentity.unacknowledgedPurchaseCount > 0
+      ? `# URGENT: pending watchlist update
+
+The user has ${agentIdentity.unacknowledgedPurchaseCount} unacknowledged auto-purchase(s) from their watchlist. **Before you generate ANY text response — even to a casual "hi" — your FIRST action this turn MUST be to call the \`watchlistList\` tool exactly once.** This applies regardless of what the user said. The UI renders styled order-confirmation cards from the result; after the tool call, add ONE short acknowledgement sentence (e.g. "Your iPhone watch fired while you were away — here's the receipt."). Do NOT repeat product names, prices, or order IDs in your text; the card already shows them. Calling \`watchlistList\` acknowledges these purchases so they will not appear again on later turns.
+
+`
+      : "";
+
   if (!toolsActive) {
-    return `${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}`;
+    return `${watchlistAlert}${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}`;
   }
 
-  return `${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}\n\n${userDataToolsPrompt}\n\n${watchlistToolsPrompt}\n\n${artifactsPrompt}`;
+  return `${watchlistAlert}${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}\n\n${userDataToolsPrompt}\n\n${watchlistToolsPrompt}\n\n${artifactsPrompt}`;
 };
 
 export const codePrompt = `
