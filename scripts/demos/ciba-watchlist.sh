@@ -174,7 +174,7 @@ do_check() {
     failed=1
   fi
 
-  # Check 2: postgres reachable + Watchlist table exists
+  # Check 3: postgres reachable + Watchlist table exists
   if docker compose exec -T postgres \
       psql -U postgres -d chatbot -c '\d "Watchlist"' >/dev/null 2>&1; then
     ok "postgres reachable and Watchlist table present"
@@ -183,27 +183,41 @@ do_check() {
     failed=1
   fi
 
-  # Fetch client JSON once for both Auth0 checks
-  local client_json
-  client_json=$(auth0 apps show "$AUTH0_CLIENT_ID" --json 2>/dev/null || echo "")
+  # Fetch client JSON once for both Auth0 checks. Close stdin so the CLI
+  # can't block on an interactive re-auth prompt when its refresh token is
+  # stale; capture stderr so we can give a specific hint on failure.
+  local client_json auth0_err
+  auth0_err=$(mktemp)
+  client_json=$(auth0 apps show "$AUTH0_CLIENT_ID" --json </dev/null 2>"$auth0_err" || true)
 
-  # Check 3: CIBA grant
-  if [ -n "$client_json" ] && printf '%s' "$client_json" \
-      | jq -e '.grant_types | index("urn:openid:params:grant-type:ciba")' >/dev/null 2>&1; then
-    ok "Auth0 client has CIBA grant (urn:openid:params:grant-type:ciba)"
-  else
-    fail "Auth0 client missing CIBA grant (run pnpm setup:auth0)"
+  if [ -z "$client_json" ]; then
+    if grep -qiE 'log in|re-authorize|access_denied|refresh' "$auth0_err"; then
+      fail "auth0 CLI session expired or invalid. Run: auth0 login"
+    else
+      fail "auth0 apps show \"$AUTH0_CLIENT_ID\" failed:"
+      sed 's/^/    /' "$auth0_err" >&2
+    fi
     failed=1
-  fi
+  else
+    # Check 4: CIBA grant
+    if printf '%s' "$client_json" \
+        | jq -e '.grant_types | index("urn:openid:params:grant-type:ciba")' >/dev/null 2>&1; then
+      ok "Auth0 client has CIBA grant (urn:openid:params:grant-type:ciba)"
+    else
+      fail "Auth0 client missing CIBA grant (run pnpm setup:auth0)"
+      failed=1
+    fi
 
-  # Check 4: guardian-push channel
-  if [ -n "$client_json" ] && printf '%s' "$client_json" \
-      | jq -e '.async_approval_notification_channels | index("guardian-push")' >/dev/null 2>&1; then
-    ok "Auth0 client has guardian-push notification channel"
-  else
-    fail "Auth0 client missing guardian-push channel (run pnpm setup:auth0)"
-    failed=1
+    # Check 5: guardian-push channel
+    if printf '%s' "$client_json" \
+        | jq -e '.async_approval_notification_channels | index("guardian-push")' >/dev/null 2>&1; then
+      ok "Auth0 client has guardian-push notification channel"
+    else
+      fail "Auth0 client missing guardian-push channel (run pnpm setup:auth0)"
+      failed=1
+    fi
   fi
+  rm -f "$auth0_err"
 
   if [ "$failed" -ne 0 ]; then
     echo
