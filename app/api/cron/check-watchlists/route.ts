@@ -1,23 +1,16 @@
-import { getAsyncAuthorizationCredentials } from "@auth0/ai-vercel";
-import { generateText, stepCountIs, tool } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { allowedModelIds, DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import { getLanguageModel } from "@/lib/ai/providers";
-import { withShopBuyApproval } from "@/lib/auth0-ai";
+import { buyProduct } from "@/lib/ai/tools/buy-product";
+import { getProductHistory } from "@/lib/ai/tools/get-product-history";
 import {
   listActiveWatches,
   resetAgedDeniedAndErrorWatches,
   resetStalledNotifiedWatches,
-  setWatchPurchased,
   setWatchStatus,
 } from "@/lib/db/queries/watchlist";
-import {
-  fetchProductHistory,
-  placeOrderWithToken,
-  type ShopSearchResult,
-  searchProduct,
-} from "@/lib/shop-api-client";
+import { type ShopSearchResult, searchProduct } from "@/lib/shop-api-client";
 
 export const maxDuration = 60;
 
@@ -133,55 +126,6 @@ export async function POST(request: NextRequest) {
     const currentPrice =
       priced.product.salePrice ?? priced.product.pricePerUnit;
 
-    const withApproval = withShopBuyApproval({
-      watchId: watch.id,
-      userId: watch.userId,
-      currentPrice,
-    });
-
-    const buyProduct = withApproval(
-      tool({
-        description:
-          "Ask the user to approve buying this product via Auth0 Guardian push. Returns the order on approval; throws on denial/expiry. Compose the bindingMessage to explain to the user (on their phone) why you're asking now.",
-        inputSchema: z.object({
-          bindingMessage: z
-            .string()
-            .min(1)
-            .describe(
-              "One concise sentence shown on Guardian. Include price and any history nuance."
-            ),
-          qty: z.number().int().positive().default(1),
-        }),
-        execute: async ({ qty }) => {
-          const credentials = getAsyncAuthorizationCredentials();
-          const accessToken = credentials?.accessToken;
-          if (!accessToken) {
-            throw new Error("CIBA approval did not produce an access token");
-          }
-          const order = await placeOrderWithToken(
-            watch.productId,
-            qty,
-            accessToken
-          );
-          await setWatchPurchased({
-            id: watch.id,
-            orderId: order.orderId,
-            purchasedPrice: currentPrice,
-            purchaseDetails: order,
-          });
-          return { ok: true, orderId: order.orderId };
-        },
-      })
-    );
-
-    const getProductHistoryTool = tool({
-      description: "Get the last N days of price snapshots for this product.",
-      inputSchema: z.object({
-        days: z.number().int().min(1).max(30).default(14),
-      }),
-      execute: async ({ days }) => fetchProductHistory(watch.productId, days),
-    });
-
     try {
       const result = await generateText({
         model: getLanguageModel(modelId),
@@ -190,8 +134,13 @@ export async function POST(request: NextRequest) {
         stopWhen: stepCountIs(3),
         temperature: 0,
         tools: {
-          getProductHistory: getProductHistoryTool,
-          buyProduct,
+          getProductHistory: getProductHistory({ productId: watch.productId }),
+          buyProduct: buyProduct({
+            watchId: watch.id,
+            userId: watch.userId,
+            productId: watch.productId,
+            currentPrice,
+          }),
         },
       });
 
