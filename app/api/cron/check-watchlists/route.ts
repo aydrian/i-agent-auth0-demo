@@ -1,7 +1,5 @@
-import { setAIContext } from "@auth0/ai-vercel";
-import { generateText, stepCountIs, tool } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { allowedModelIds, DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { buyProduct } from "@/lib/ai/tools/buy-product";
@@ -142,57 +140,15 @@ export async function POST(request: NextRequest) {
     const currentPrice =
       priced.product.salePrice ?? priced.product.pricePerUnit;
 
-    // Debug: when DISABLE_CIBA_WRAPPER=1, swap in an unwrapped stub for
-    // buyProduct that just logs and returns success. Lets us isolate
-    // whether the Auth0 wrapper is preventing tool invocation.
-    const useStub = process.env.DISABLE_CIBA_WRAPPER === "1";
-
-    const stubBuyProduct = tool({
-      description:
-        "Send the user a purchase confirmation request. Returns the order on approval. Set bindingMessage to the sentence the user sees and qty to the quantity.",
-      inputSchema: z.object({
-        bindingMessage: z.string().min(1),
-        qty: z.number().int().positive().default(1),
-      }),
-      execute: async ({ bindingMessage, qty }) => {
-        console.log("[cron] STUB buyProduct invoked", {
-          watchId: watch.id,
-          bindingMessage,
-          qty,
-        });
-        return { ok: true, orderId: `STUB-${watch.id}`, bindingMessage };
-      },
-    });
-
     const tools = {
       getProductHistory: getProductHistory({ productId: watch.productId }),
-      buyProduct: useStub
-        ? stubBuyProduct
-        : buyProduct({
-            watchId: watch.id,
-            userId: watch.userId,
-            productId: watch.productId,
-            currentPrice,
-          }),
+      buyProduct: buyProduct({
+        watchId: watch.id,
+        userId: watch.userId,
+        productId: watch.productId,
+        currentPrice,
+      }),
     };
-
-    console.log("[cron] watch", watch.id, {
-      modelId,
-      useStub,
-      toolKeys: Object.keys(tools),
-      buyProductHasDescription:
-        typeof (tools.buyProduct as { description?: unknown }).description ===
-        "string",
-      buyProductHasInputSchema:
-        (tools.buyProduct as { inputSchema?: unknown }).inputSchema != null,
-    });
-
-    // The Auth0 AI SDK wrapper registers the tool against an AI context.
-    // Without setAIContext, the wrapped tool is silently inert — the model
-    // sees its description but its calls don't actually fire. Use the
-    // watch.id as a synthetic thread id; we're not in chat, but the
-    // wrapper just needs *some* context to hang state on.
-    setAIContext({ threadID: watch.id });
 
     try {
       const result = await generateText({
