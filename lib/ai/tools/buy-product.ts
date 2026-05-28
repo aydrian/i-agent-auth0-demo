@@ -36,8 +36,9 @@ export const buyProduct = (params: BuyProductParams) =>
       bindingMessage: z
         .string()
         .min(1)
+        .max(64)
         .describe(
-          "One concise sentence shown to the user when deciding whether to approve. Include the price and any relevant nuance."
+          "One concise sentence (MAX 64 CHARACTERS) shown to the user when deciding whether to approve. Include the price; keep it tight. Auth0 CIBA rejects binding messages longer than 64 chars."
         ),
       qty: z.number().int().positive().default(1),
     }),

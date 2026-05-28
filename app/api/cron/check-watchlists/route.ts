@@ -24,7 +24,7 @@ Input: a product, its current price, and the user's intent (their rule for when 
 Your output is EITHER a tool call OR one sentence of plain text. Never both.
 
 If the intent is satisfied by the current price:
-  → Invoke the \`buyProduct\` tool. Set \`bindingMessage\` to one sentence the user will see on their phone explaining what they're approving and why (mention the price and how it satisfies their rule). Set \`qty\` to 1 unless the user said otherwise. Do not output any text alongside the tool call — the tool call IS the output.
+  → Invoke the \`buyProduct\` tool. Set \`bindingMessage\` to one sentence the user will see on their phone explaining what they're approving and why (mention the price and how it satisfies their rule). **The bindingMessage MUST be 64 characters or fewer** — Auth0 rejects longer ones. Be tight. Set \`qty\` to 1 unless the user said otherwise. Do not output any text alongside the tool call — the tool call IS the output.
 
 If the intent is not satisfied:
   → Reply with one short sentence stating the user's threshold and the current price. Do not call any tool.

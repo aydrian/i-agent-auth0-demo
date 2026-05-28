@@ -107,6 +107,12 @@ export async function requestCibaApproval({
       );
     }
     authorize = (await res.json()) as AuthorizeResponse;
+    console.log("[ciba] /bc-authorize OK", {
+      auth_req_id: authorize.auth_req_id,
+      expires_in: authorize.expires_in,
+      interval: authorize.interval,
+      bindingMessageLength: bindingMessage.length,
+    });
   } catch (err) {
     if (err instanceof CibaApprovalError) {
       throw err;
