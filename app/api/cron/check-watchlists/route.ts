@@ -1,5 +1,6 @@
-import { generateText, stepCountIs } from "ai";
+import { generateText, stepCountIs, tool } from "ai";
 import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { allowedModelIds, DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { buyProduct } from "@/lib/ai/tools/buy-product";
@@ -140,21 +141,43 @@ export async function POST(request: NextRequest) {
     const currentPrice =
       priced.product.salePrice ?? priced.product.pricePerUnit;
 
+    // Debug: when DISABLE_CIBA_WRAPPER=1, swap in an unwrapped stub for
+    // buyProduct that just logs and returns success. Lets us isolate
+    // whether the Auth0 wrapper is preventing tool invocation.
+    const useStub = process.env.DISABLE_CIBA_WRAPPER === "1";
+
+    const stubBuyProduct = tool({
+      description:
+        "Send the user a purchase confirmation request. Returns the order on approval. Set bindingMessage to the sentence the user sees and qty to the quantity.",
+      inputSchema: z.object({
+        bindingMessage: z.string().min(1),
+        qty: z.number().int().positive().default(1),
+      }),
+      execute: async ({ bindingMessage, qty }) => {
+        console.log("[cron] STUB buyProduct invoked", {
+          watchId: watch.id,
+          bindingMessage,
+          qty,
+        });
+        return { ok: true, orderId: `STUB-${watch.id}`, bindingMessage };
+      },
+    });
+
     const tools = {
       getProductHistory: getProductHistory({ productId: watch.productId }),
-      buyProduct: buyProduct({
-        watchId: watch.id,
-        userId: watch.userId,
-        productId: watch.productId,
-        currentPrice,
-      }),
+      buyProduct: useStub
+        ? stubBuyProduct
+        : buyProduct({
+            watchId: watch.id,
+            userId: watch.userId,
+            productId: watch.productId,
+            currentPrice,
+          }),
     };
 
-    // Diagnostic: confirm the wrapped buyProduct tool has the AI-SDK shape
-    // the model expects. If `inputSchema` or `description` is missing, the
-    // wrapper is hiding the tool from the model.
     console.log("[cron] watch", watch.id, {
       modelId,
+      useStub,
       toolKeys: Object.keys(tools),
       buyProductHasDescription:
         typeof (tools.buyProduct as { description?: unknown }).description ===
