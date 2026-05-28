@@ -34,7 +34,10 @@ If the intent is satisfied by the current price:
 If the intent is not satisfied:
   → Reply with one short sentence stating the user's threshold and the current price. Do not call any tool.
 
-Optional: if the user's intent references price history (phrases like "recent low", "lowest in N days"), call \`getProductHistory\` first to inform your decision. Otherwise skip it.
+**Strongly consider calling \`getProductHistory\` first** to enrich your decision. It's a cheap call and gives the user useful context they wouldn't otherwise see:
+  • REQUIRED when the user's intent references history (phrases like "recent low", "lowest in N days", "matches recent low") — without history you can't evaluate the rule.
+  • RECOMMENDED whenever the current price is below the user's threshold but you might still inform them of a better recent deal — e.g. current is at the threshold but it was meaningfully lower 5 days ago. Mention that in the bindingMessage so the user can decide informedly.
+  • SKIP only when the intent is a simple price comparison and the answer is obvious (e.g. current is at MSRP, way above any threshold).
 
 Authority: you act on the user's behalf. The \`buyProduct\` tool handles authentication and order placement internally — you have no need for credentials, sessions, or login of your own. Do not refuse for any reason other than the user's intent being unmet.`;
 
@@ -188,6 +191,13 @@ export async function POST(request: NextRequest) {
       const successful = buyResults.find((r) => r.output?.ok === true);
       const failedResults = buyResults.filter((r) => r.output?.ok === false);
 
+      // Show every tool the agent called, including history lookups, so we
+      // can see at a glance whether the agent consulted price history.
+      const toolsCalled = (result.steps ?? [])
+        .flatMap((s) => s.toolCalls ?? [])
+        .map((c) => c.toolName);
+      const toolsTag = `tools=[${toolsCalled.join(",") || "none"}]`;
+
       if (successful) {
         summary.triggered += 1;
         summary.purchased += 1;
@@ -195,7 +205,7 @@ export async function POST(request: NextRequest) {
           watchId: watch.id,
           productId: watch.productId,
           outcome: "purchased",
-          note: `${result.text || "(approved)"}`,
+          note: `${toolsTag} ${result.text || "(approved)"}`,
         });
       } else if (failedResults.length > 0) {
         // The model attempted buyProduct one or more times but each came
@@ -217,7 +227,7 @@ export async function POST(request: NextRequest) {
             watchId: watch.id,
             productId: watch.productId,
             outcome: "denied",
-            note: `${last.error}: ${last.message ?? ""}`.trim(),
+            note: `${toolsTag} ${last.error}: ${last.message ?? ""}`.trim(),
           });
         } else {
           await setWatchStatus(watch.id, "error");
@@ -226,19 +236,16 @@ export async function POST(request: NextRequest) {
             watchId: watch.id,
             productId: watch.productId,
             outcome: "error",
-            note: `${last.error}: ${last.message ?? ""}`.trim(),
+            note: `${toolsTag} ${last.error}: ${last.message ?? ""}`.trim(),
           });
         }
       } else {
         // No buyProduct attempts at all — agent decided intent wasn't met.
-        const allToolNames = (result.steps ?? [])
-          .flatMap((s) => s.toolCalls ?? [])
-          .map((c) => c.toolName);
         summary.details.push({
           watchId: watch.id,
           productId: watch.productId,
           outcome: "no-buy",
-          note: `model=${modelId} tools=[${allToolNames.join(",") || "none"}] text=${result.text || "(empty)"}`,
+          note: `model=${modelId} ${toolsTag} text=${result.text || "(empty)"}`,
         });
       }
     } catch (err) {
