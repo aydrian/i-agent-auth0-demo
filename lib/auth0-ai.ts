@@ -35,9 +35,32 @@ export const withShopBuyApproval = (params: {
       bindingMessage,
     scopes: ["openid", "product:buy"],
     audience: requireEnv("SHOP_API_AUDIENCE"),
-    onAuthorizationRequest: async (_authReq, creds) => {
+    onAuthorizationRequest: async (authReq, creds) => {
+      console.log("[ciba] onAuthorizationRequest fired", {
+        watchId: params.watchId,
+        userId: params.userId,
+        // Should contain `id` (auth_req_id) + `expiresIn` if CIBA was really
+        // initiated. If this is undefined or a stub, /bc-authorize never fired.
+        authReq,
+      });
       await setWatchNotified(params.watchId, params.currentPrice);
-      await creds;
+      try {
+        const resolved = await creds;
+        console.log("[ciba] credentials resolved", {
+          watchId: params.watchId,
+          hasAccessToken: typeof resolved?.accessToken === "string",
+          accessTokenPrefix:
+            typeof resolved?.accessToken === "string"
+              ? resolved.accessToken.slice(0, 12) + "..."
+              : null,
+        });
+      } catch (err) {
+        console.log("[ciba] credentials rejected", {
+          watchId: params.watchId,
+          error: (err as Error).message,
+        });
+        throw err;
+      }
     },
   });
 
