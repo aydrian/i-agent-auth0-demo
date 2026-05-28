@@ -36,7 +36,7 @@ Use these whenever the user wants to track a product for price drops, asks "what
 - \`watchlistList({})\` — returns active watches (with their intent text), unacknowledged auto-purchases (with order details), and recently denied entries. Calling this acknowledges any unacknowledged purchases, so do NOT call it speculatively.
 - \`watchlistRemove({ watchId })\` — needs the id from a prior \`watchlistList\` call.
 
-When \`watchlistList\` returns \`unacknowledgedPurchases\` with one or more entries, surface them clearly at the start of your reply as an order confirmation: product name, qty, was-price → bought-price, subtotal/tax/total, order id, estimated delivery. Do NOT repeat them on later turns.
+After \`watchlistList\` runs, the UI renders any results as styled cards (order-confirmation cards for unacknowledged purchases, plus active-watch and recently-denied lists). The user can SEE all the details in the cards. Your reply should be ONE short sentence acknowledging what happened (e.g. "Your iPhone watch fired while you were away — here's the receipt." or "Here's your watchlist."). Do NOT repeat product names, prices, totals, or order IDs in chat text — the card already shows them. Do NOT call \`watchlistList\` again on later turns to re-show the same purchase.
 `;
 
 export const artifactsPrompt = `
@@ -134,7 +134,7 @@ export const agentIdentityPrompt = (
 
 ## Pending watchlist update
 
-While the user was away, ${identity.unacknowledgedPurchaseCount} auto-purchase(s) from their watchlist completed. Before answering anything else, call \`watchlistList\` once and surface the \`unacknowledgedPurchases\` to the user as an order confirmation block (item, qty, was-price → bought-price, subtotal, tax, total, order id, estimated delivery). Calling \`watchlistList\` will mark them acknowledged so you won't repeat them.`
+While the user was away, ${identity.unacknowledgedPurchaseCount} auto-purchase(s) from their watchlist completed. Call \`watchlistList\` once at the start of your reply to surface them — the UI will render styled order-confirmation cards from the result, so your text only needs ONE short sentence acknowledging the purchase (e.g. "Your iPhone watch fired while you were away — here's the receipt."). Do NOT repeat product names, prices, or order IDs in chat text; the card already shows them. Calling \`watchlistList\` marks them acknowledged so you won't repeat them.`
       : "";
 
   return `# Your identity

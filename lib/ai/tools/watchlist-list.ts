@@ -35,22 +35,41 @@ export const watchlistList = ({ userId }: { userId: string }) =>
         }));
 
       const purchases = await listUnacknowledgedPurchases(userId);
+      // shop-api returns image paths like "/static/images/foo.jpg" — prepend
+      // the shop host so the browser can resolve them. SHOP_API_URL looks like
+      // "http://localhost:8000/api/shop" so we strip the "/api/shop" suffix.
+      const shopHost =
+        process.env.SHOP_API_URL?.replace(/\/api\/shop\/?$/, "") ?? "";
       const unacknowledgedPurchases = purchases.map((w) => {
         const details = (w.purchaseDetails ?? {}) as {
           orderId?: string;
-          product?: { id: string; name: string; pricePerUnit?: number };
+          product?: {
+            id: string;
+            name: string;
+            category?: string;
+            pricePerUnit?: number;
+            imageUrl?: string;
+          };
           qty?: number;
           subtotal?: number;
           tax?: number;
           total?: number;
           estimatedDelivery?: string;
         };
+        const rawImage = details.product?.imageUrl ?? null;
+        const imageUrl = rawImage
+          ? rawImage.startsWith("http")
+            ? rawImage
+            : `${shopHost}${rawImage}`
+          : null;
         return {
           watchId: w.id,
           orderId: w.orderId ?? details.orderId ?? "",
           product: {
             id: details.product?.id ?? w.productId,
             name: details.product?.name ?? w.productName,
+            category: details.product?.category ?? null,
+            imageUrl,
           },
           qty: details.qty ?? 1,
           originalPrice: details.product?.pricePerUnit ?? null,

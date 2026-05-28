@@ -6,6 +6,9 @@ import type { getWeather } from "./ai/tools/get-weather";
 import type { gmailSearch } from "./ai/tools/gmail-search";
 import type { requestSuggestions } from "./ai/tools/request-suggestions";
 import type { updateDocument } from "./ai/tools/update-document";
+import type { watchlistAdd } from "./ai/tools/watchlist-add";
+import type { watchlistList } from "./ai/tools/watchlist-list";
+import type { watchlistRemove } from "./ai/tools/watchlist-remove";
 import type { Suggestion } from "./db/schema";
 
 export const messageMetadataSchema = z.object({
@@ -21,6 +24,9 @@ type updateDocumentTool = InferUITool<ReturnType<typeof updateDocument>>;
 type requestSuggestionsTool = InferUITool<
   ReturnType<typeof requestSuggestions>
 >;
+type watchlistAddTool = InferUITool<ReturnType<typeof watchlistAdd>>;
+type watchlistListTool = InferUITool<ReturnType<typeof watchlistList>>;
+type watchlistRemoveTool = InferUITool<ReturnType<typeof watchlistRemove>>;
 
 export type ChatTools = {
   getWeather: weatherTool;
@@ -28,6 +34,9 @@ export type ChatTools = {
   createDocument: createDocumentTool;
   updateDocument: updateDocumentTool;
   requestSuggestions: requestSuggestionsTool;
+  watchlistAdd: watchlistAddTool;
+  watchlistList: watchlistListTool;
+  watchlistRemove: watchlistRemoveTool;
 };
 
 export type CustomUIDataTypes = {

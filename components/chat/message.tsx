@@ -24,6 +24,7 @@ import { SparklesIcon } from "./icons";
 import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
+import { WatchlistDisplay } from "./watchlist-display";
 import { Weather } from "./weather";
 
 const PurePreviewMessage = ({
@@ -281,6 +282,36 @@ const PurePreviewMessage = ({
               {(state === "input-available" || state === "input-streaming") && (
                 <ToolInput input={part.input} />
               )}
+              {state === "output-error" && (
+                <ToolOutput errorText={part.errorText} output={undefined} />
+              )}
+            </ToolContent>
+          </Tool>
+        </div>
+      );
+    }
+
+    if (type === "tool-watchlistList") {
+      const { toolCallId, state } = part;
+      const widthClass = "w-[min(100%,450px)]";
+
+      if (state === "output-available") {
+        return (
+          <div className={widthClass} key={toolCallId}>
+            <WatchlistDisplay
+              result={
+                part.output as Parameters<typeof WatchlistDisplay>[0]["result"]
+              }
+            />
+          </div>
+        );
+      }
+
+      return (
+        <div className={widthClass} key={toolCallId}>
+          <Tool className="w-full" defaultOpen={true}>
+            <ToolHeader state={state} type="tool-watchlistList" />
+            <ToolContent>
               {state === "output-error" && (
                 <ToolOutput errorText={part.errorText} output={undefined} />
               )}
