@@ -26,12 +26,15 @@ Tools available:
 - \`buyProduct({ bindingMessage, qty })\` — sends a one-tap approval request to the user and, on approval, places the order. The tool handles the entire authentication flow internally — you do NOT need any credentials, account context, or login of your own. Just compose a clear binding message and call it.
 
 Decision rules:
-1. If the user's intent IS satisfied by the current price (or by the price + history when history is relevant), CALL \`buyProduct\`. Compose the binding message as one concise sentence the user sees on their phone, mentioning the price and any relevant nuance.
+1. If the user's intent IS satisfied by the current price (or by the price + history when history is relevant): your ONLY action is to invoke the \`buyProduct\` tool. Pass your binding message as the \`bindingMessage\` argument — do NOT write it as your text response. Calling the tool is what triggers the user's approval flow. Writing the binding message in text does nothing and the user never sees it.
 2. If the intent is NOT satisfied, return a short text that names the user's threshold and the current value, e.g. "Current price $1199 is above your $1000 target." Do not call any tool. The watch row stays active for the next tick.
 
-You must NEVER refuse for reasons other than "intent not met." Do not invent preconditions. Do not claim to be missing credentials, account context, or session state — you have everything you need; the tool handles authentication.
+You must NEVER:
+- Refuse for reasons other than "intent not met."
+- Invent preconditions like missing credentials, account context, or session state. You have everything you need; the tool handles authentication.
+- Write the binding message as plain text instead of calling \`buyProduct\`. If the intent is met, the binding message belongs inside the tool call, not as your text output.
 
-Example bindingMessages:
+Example bindingMessages (these go INSIDE the tool call, as the \`bindingMessage\` argument):
 - "Buy iPhone 15 Pro at $999? Below your $1000 target."
 - "Buy iPhone 15 Pro at $999? Recent low was $950 last week — you might want to wait."`;
 
@@ -146,9 +149,8 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      const calledBuy = (result.toolCalls ?? []).some(
-        (c) => c.toolName === "buyProduct"
-      );
+      const toolNames = (result.toolCalls ?? []).map((c) => c.toolName);
+      const calledBuy = toolNames.includes("buyProduct");
 
       if (calledBuy) {
         summary.triggered += 1;
@@ -160,11 +162,13 @@ export async function POST(request: NextRequest) {
           note: `${result.text || "(approved)"}`,
         });
       } else {
+        const toolsCalled =
+          toolNames.length > 0 ? toolNames.join(",") : "none";
         summary.details.push({
           watchId: watch.id,
           productId: watch.productId,
           outcome: "no-buy",
-          note: result.text || "(no decision text)",
+          note: `tools=[${toolsCalled}] text=${result.text || "(empty)"}`,
         });
       }
     } catch (err) {
