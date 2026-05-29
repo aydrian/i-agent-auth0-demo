@@ -133,7 +133,7 @@ function buildWatchPrompt(
   const msrp = priced.product.pricePerUnit.toFixed(2);
   const sale = priced.product.salePrice;
   const currentPrice =
-    sale != null ? sale.toFixed(2) : priced.product.pricePerUnit.toFixed(2);
+    sale == null ? priced.product.pricePerUnit.toFixed(2) : sale.toFixed(2);
   const onSale = sale != null && sale < priced.product.pricePerUnit;
   return [
     `Product: ${watch.productName}`,
