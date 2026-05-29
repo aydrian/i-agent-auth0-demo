@@ -103,7 +103,7 @@ Stop the services with `docker compose down`. Use `docker compose down -v` to al
 
 ## CIBA Price-Drop Watchlist demo
 
-This branch (`feat/ciba-watchlist`) demonstrates Auth0 CIBA + Guardian as out-of-session human-in-the-loop. The agent watches user-defined products, requests approval via Guardian push when prices drop, auto-purchases on approval, and surfaces the order confirmation in chat next session.
+This branch (`feat/ciba-watchlist`) demonstrates Auth0 CIBA + Guardian as out-of-session human-in-the-loop. An LLM agent runs on a cron, watches user-defined products, reasons over current price plus recent history, requests approval via Guardian push when the user's intent is satisfied, auto-purchases on approval, and surfaces the order confirmation in chat next session.
 
 ### Auth0 prerequisites (one-time)
 
@@ -135,25 +135,34 @@ Set the new env vars in `.env.local` (see `.env.example`):
 - `SHOP_API_AUDIENCE=https://api.shop-online-demo.com`
 - `CRON_SECRET=<random>`
 - `ADMIN_API_KEY=<random>` (must match the value the shop-api container reads)
-- `ADMIN_EMAIL=<your demo user's email>`
+
+### Demo helper
+
+The full live-demo runbook lives at [`docs/demos/ciba-watchlist.md`](docs/demos/ciba-watchlist.md). The `pnpm demo:ciba-watchlist` script wraps the operator-side moves:
+
+```bash
+pnpm demo:ciba-watchlist check     # preflight: env vars, dev server, shop-api, Auth0 setup
+pnpm demo:ciba-watchlist reset     # clear sales + drop watchlist rows between takes
+pnpm demo:ciba-watchlist trigger   # POST /api/cron/check-watchlists with the right Bearer
+```
 
 ### Demo flow
 
-1. Sign in. In chat: *"Watch the iPhone 15 Pro and let me know if it drops below $1000."*
-2. Open `/admin` (page is gated by `ADMIN_EMAIL`). Put the iPhone on sale at $999 for some duration.
-3. Click "Run watchlist check now". A Guardian push lands on your phone with binding message *"Buy 1x iPhone 15 Pro at $999.00 (was $1199.00)?"*.
-4. Approve on phone. The admin page's result panel shows `purchased: 1`.
-5. Open chat (or send a new message). The agent calls `watchlistList`, surfaces the order confirmation, and the row's `acknowledgedAt` is set so it doesn't repeat.
+1. Sign in. In chat: *"Watch the iPhone 15 Pro and buy it if it drops below $1000."* (Or, to showcase history reasoning: *"…buy it if it matches its recent low."*)
+2. Open the shop admin at <http://localhost:8000/admin>. Sign in with `ADMIN_API_KEY`. Put the iPhone on sale at $999.
+3. Run `pnpm demo:ciba-watchlist trigger`. The cron loads active watches, the agent calls `getProductHistory` then `buyProduct`, and a Guardian push lands on your phone with a binding message that references both the rule and history (e.g. *"iPhone Pro 999 USD: under 1000, near 14d low."*).
+4. Approve on phone. The trigger output shows `purchased: 1` and the `binding="..."` it sent to Auth0.
+5. Open chat and send any message. The agent calls `watchlistList`, the order-confirmation card appears in chat, and the row's `acknowledgedAt` is set so it doesn't repeat.
 
-`/api/cron/check-watchlists` is also wired to Vercel Cron (`vercel.json`) at one-minute cadence for production use.
+`/api/cron/check-watchlists` is also wired to Vercel Cron (`vercel.json`) at one-minute cadence for production use. Locally, only the manual trigger executes it — Vercel Cron does not watch your dev server.
 
 ### Architecture
 
-- **Cron route** (`app/api/cron/check-watchlists/route.ts`) loads active watches, fetches current prices from shop-api, fires CIBA pushes for drops, and auto-purchases on approval.
-- **CIBA helper** (`lib/auth0-ciba.ts`) is a direct Auth0 `/bc-authorize` + `/oauth/token` polling helper — used out-of-session, distinct from the in-session interrupt flow that `@auth0/ai-vercel`'s `withAsyncAuthorization` provides.
-- **Watchlist tools** (`lib/ai/tools/watchlist-{add,list,remove}.ts`) are plain DB ops; `watchlistList` returns active watches plus unacknowledged purchases (and atomically marks them acknowledged so they don't re-surface).
-- **Surfacing in chat:** `lib/ai/agent-identity.ts` counts unacknowledged purchases per request; `lib/ai/prompts.ts` injects a "## Pending watchlist update" block into the system prompt that prompts the agent to call `watchlistList` and present the order confirmation.
-- **Shop-api** (`shop-api/`, FastAPI) gained a `sales.json` state file, sale-aware catalog reads, and admin endpoints for sale set/clear and product list.
-- **Demo admin** (`/admin`) gives a quick UI to put items on sale and trigger the cron check on demand without waiting for the Vercel scheduler.
+- **Cron route** (`app/api/cron/check-watchlists/route.ts`) loads active watches and runs an LLM agent per watch with `generateText` + `tools`. The agent decides whether the user's intent is satisfied, consults price history, and calls `buyProduct` (Auth0 SDK-wrapped CIBA tool) when it should act.
+- **Auth0 AI SDK wrapper** (`lib/auth0-ai.ts`) builds the `withAsyncAuthorization` wrapper using `@auth0/ai-vercel`. The wrapper handles `/bc-authorize` + token polling automatically. `bindingMessage` is sanitized to Auth0's allowed character set (max 64 chars; no `$`, `?`, parens, etc.).
+- **Cron tools** (`lib/ai/tools/buy-product.ts`, `lib/ai/tools/get-product-history.ts`) are the agent's hands: `buyProduct` returns a structured `{ ok, ... }` instead of throwing on CIBA failure so the cron can classify outcomes (purchased / denied / error); `getProductHistory` calls shop-api for daily prices.
+- **Watchlist tools** (`lib/ai/tools/watchlist-{add,list,remove}.ts`) are the chat-side tools. `watchlistAdd` captures the user's intent verbatim. `watchlistList` returns active watches plus unacknowledged purchases (and atomically marks them acknowledged so they don't re-surface).
+- **Surfacing in chat:** `lib/ai/agent-identity.ts` counts unacknowledged purchases per request; `lib/ai/prompts.ts` hoists an "URGENT: pending watchlist update" block to the top of the system prompt so the chat agent calls `watchlistList` even on a casual "hi". `components/chat/watchlist-display.tsx` renders the order confirmation as a styled card.
+- **Shop-api** (`shop-api/`, FastAPI) provides the catalog, sale-aware reads, deterministic synthetic price history (`shop-api/data/seed_history.py` injects a realistic dip 5-9 days back per product), and a server-rendered admin UI under `/admin` for setting sales.
 
-See `docs/superpowers/specs/2026-05-26-ciba-price-watchlist-design.md` for the full design spec and `docs/superpowers/plans/2026-05-26-ciba-watchlist.md` for the step-by-step implementation plan.
+See [`docs/demos/ciba-watchlist.md`](docs/demos/ciba-watchlist.md) for the live demo runbook, [`docs/auth0-ciba-without-chat.md`](docs/auth0-ciba-without-chat.md) for the SDK-in-cron postmortem, [`docs/superpowers/specs/2026-05-26-ciba-price-watchlist-design.md`](docs/superpowers/specs/2026-05-26-ciba-price-watchlist-design.md) for the full design spec, and [`docs/superpowers/plans/2026-05-26-ciba-watchlist.md`](docs/superpowers/plans/2026-05-26-ciba-watchlist.md) for the step-by-step implementation plan.

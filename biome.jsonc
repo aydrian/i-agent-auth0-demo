@@ -17,7 +17,8 @@
       "!components/ui",
       "!lib/utils.ts",
       "!lib/db/migrations",
-      "!hooks/use-mobile.ts"
+      "!hooks/use-mobile.ts",
+      "!shop-api"
     ]
   },
   "linter": {

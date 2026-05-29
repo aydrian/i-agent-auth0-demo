@@ -107,7 +107,7 @@ function formatCapabilityLine(capability: Capability): string {
 
 export const agentIdentityPrompt = (
   identity: AgentIdentity,
-  options: { toolsActive: boolean } = { toolsActive: true }
+  _options: { toolsActive: boolean } = { toolsActive: true }
 ): string => {
   const availableSection =
     identity.available.length > 0

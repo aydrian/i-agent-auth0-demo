@@ -57,7 +57,7 @@ export const withShopBuyApproval = (params: {
           hasAccessToken: typeof resolved?.accessToken === "string",
           accessTokenPrefix:
             typeof resolved?.accessToken === "string"
-              ? resolved.accessToken.slice(0, 12) + "..."
+              ? `${resolved.accessToken.slice(0, 12)}...`
               : null,
         });
       } catch (err) {

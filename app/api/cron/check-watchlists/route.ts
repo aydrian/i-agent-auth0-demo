@@ -33,8 +33,8 @@ Decide one thing: does the current price satisfy the user's intent RIGHT NOW?
 
 Map the user's English to a numeric check, then evaluate it against the current price:
 
-- "below \$X" / "under \$X" / "drops below \$X" → satisfied when current < X
-- "at or below \$X" / "\$X or less" → satisfied when current <= X
+- "below $X" / "under $X" / "drops below $X" → satisfied when current < X
+- "at or below $X" / "$X or less" → satisfied when current <= X
 - "X% off" / "X% discount" → satisfied when current <= MSRP * (1 - X/100)
 - "matches recent low" / "lowest in N days" → MUST call \`getProductHistory\` first, then satisfied when current <= recent low
 
@@ -69,14 +69,14 @@ When you do call \`buyProduct\` after history, the \`bindingMessage\` should ref
 # Worked examples
 
 Example 1 — intent satisfied, MUST call BOTH tools in order:
-  Input: Product=iPhone 15 Pro, Current price=999, User intent="below \$1000"
+  Input: Product=iPhone 15 Pro, Current price=999, User intent="below $1000"
   Comparison: 999 < 1000 → TRUE → satisfied
   Step 1: call \`getProductHistory({ days: 14 })\` and read the result.
   Step 2: call \`buyProduct({ qty: 1, bindingMessage: "iPhone 15 Pro at 999 USD: below 1000 limit, near 14-day low." })\` — referencing what history showed.
   WRONG: skipping \`getProductHistory\` and going straight to \`buyProduct\`. WRONG: writing "Current price is 999, which is below the 1000 threshold." — that's describing, not acting. The user does not see this text.
 
 Example 2 — intent not satisfied, write text:
-  Input: Product=iPhone 15 Pro, Current price=1199, User intent="below \$1000"
+  Input: Product=iPhone 15 Pro, Current price=1199, User intent="below $1000"
   Comparison: 1199 < 1000 → FALSE → not satisfied
   Correct action: reply "Current price 1199 USD is above your 1000 USD threshold." (no tool call)
 
@@ -227,8 +227,7 @@ export async function POST(request: NextRequest) {
         (s) => (s as { toolResults?: unknown[] }).toolResults ?? []
       );
       const buyResults = allToolResults.filter(
-        (r) =>
-          (r as { toolName?: string }).toolName === "buyProduct"
+        (r) => (r as { toolName?: string }).toolName === "buyProduct"
       ) as Array<{
         toolName: string;
         output?:
@@ -269,7 +268,7 @@ export async function POST(request: NextRequest) {
         // The model attempted buyProduct one or more times but each came
         // back ok:false. Use the LAST failure's reason to classify.
         summary.triggered += 1;
-        const last = failedResults[failedResults.length - 1].output as {
+        const last = failedResults.at(-1)?.output as {
           ok: false;
           error: string;
           message?: string;
