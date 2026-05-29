@@ -16,6 +16,7 @@
     "db:check": "drizzle-kit check",
     "db:up": "drizzle-kit up",
     "demo:ciba-watchlist": "./scripts/demos/ciba-watchlist.sh",
+    "demo:camp-ai-ny": "./scripts/demos/camp-ai-ny.sh",
     "setup:auth0": "./scripts/setup-auth0.sh",
     "test": "export PLAYWRIGHT=True && pnpm exec playwright test"
   },

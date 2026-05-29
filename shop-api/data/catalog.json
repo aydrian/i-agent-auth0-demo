@@ -62,5 +62,13 @@
     "pricePerUnit": 89.00,
     "imageUrl": "instant-pot-duo.jpg",
     "tags": ["pressure cooker", "slow cooker", "rice cooker", "cooking"]
+  },
+  {
+    "id": "mac-mini-m4",
+    "name": "Mac Mini M4",
+    "category": "Electronics",
+    "pricePerUnit": 999.00,
+    "imageUrl": "mac-mini-m4.jpg",
+    "tags": ["mac", "mac mini", "desktop", "apple silicon", "m4", "computer"]
   }
 ]
