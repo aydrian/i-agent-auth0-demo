@@ -66,6 +66,28 @@ services:
         mc mb --ignore-existing local/chatbot-uploads &&
         mc anonymous set download local/chatbot-uploads
 
+  shop-api:
+    build: ./shop-api
+    container_name: chatbot-shop-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    # Source ADMIN_API_KEY (and any other vars the container reads) from
+    # .env.local — same file the Next.js app uses. Listed as not required
+    # so `docker compose up` still works in fresh checkouts; the shop-api
+    # admin endpoints will just return 503 "Admin not configured" until
+    # the user creates .env.local with ADMIN_API_KEY set.
+    env_file:
+      - path: .env.local
+        required: false
+    volumes:
+      - ./shop-api/data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:
   redis_data:

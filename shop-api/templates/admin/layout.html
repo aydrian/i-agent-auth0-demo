@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Shop API Admin</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 1.5rem; color: #1f2937; }
+    header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid #e5e7eb; margin-bottom: 1.5rem; }
+    header h1 { margin: 0; font-size: 1.25rem; }
+    header form { margin: 0; }
+    button, input[type=submit] { font-family: inherit; }
+    .btn { display: inline-block; padding: 0.4rem 0.8rem; border: 1px solid #d1d5db; border-radius: 0.25rem; background: #fff; cursor: pointer; }
+    .btn-primary { background: #2563eb; border-color: #2563eb; color: white; }
+    .btn-danger { background: #f3f4f6; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+    th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
+    th { background: #f9fafb; font-weight: 600; }
+    .product-id { color: #6b7280; font-size: 0.8rem; }
+    input[type=number], input[type=password] { padding: 0.3rem 0.5rem; border: 1px solid #d1d5db; border-radius: 0.25rem; width: 6rem; }
+    input[type=password] { width: 18rem; }
+    .row-form { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .alert { background: #fef2f2; color: #991b1b; padding: 0.5rem 0.75rem; border-radius: 0.25rem; margin-bottom: 1rem; }
+    .login-form { max-width: 24rem; margin: 4rem auto; padding: 1.5rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; }
+    .login-form h1 { margin-top: 0; }
+    .login-form label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: #4b5563; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Shop API Admin</h1>
+    {% if logged_in %}
+      <form method="post" action="/admin/logout"><button class="btn" type="submit">Logout</button></form>
+    {% endif %}
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

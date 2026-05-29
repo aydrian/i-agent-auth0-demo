@@ -3,6 +3,7 @@ import {
   fetchConnectedAccounts,
 } from "@/lib/actions/profile";
 import type { AppSession } from "@/lib/auth0-types";
+import { countUnacknowledgedPurchases } from "@/lib/db/queries/watchlist";
 import {
   AGENT_CAPABILITIES,
   type Capability,
@@ -14,6 +15,7 @@ export type AgentIdentity = {
   available: Capability[];
   needsAuthorization: Capability[];
   planned: Capability[];
+  unacknowledgedPurchaseCount: number;
 };
 
 function resolveUserName(session: AppSession): string {
@@ -74,5 +76,15 @@ export async function buildAgentIdentity({
     }
   }
 
-  return { userName, available, needsAuthorization, planned };
+  const unacknowledgedPurchaseCount = session.user.sub
+    ? await countUnacknowledgedPurchases(session.user.sub)
+    : 0;
+
+  return {
+    userName,
+    available,
+    needsAuthorization,
+    planned,
+    unacknowledgedPurchaseCount,
+  };
 }

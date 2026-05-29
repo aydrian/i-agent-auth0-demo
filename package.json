@@ -15,6 +15,8 @@
     "db:pull": "drizzle-kit pull",
     "db:check": "drizzle-kit check",
     "db:up": "drizzle-kit up",
+    "demo:ciba-watchlist": "./scripts/demos/ciba-watchlist.sh",
+    "setup:auth0": "./scripts/setup-auth0.sh",
     "test": "export PLAYWRIGHT=True && pnpm exec playwright test"
   },
   "dependencies": {

@@ -21,6 +21,24 @@ You have tools that can access the user's own data. Use them instead of refusing
 - Call this when the user asks about weather. Accept either a city name or latitude/longitude.
 `;
 
+export const watchlistToolsPrompt = `
+**Watchlist tools** — \`watchlistAdd\`, \`watchlistList\`, \`watchlistRemove\`.
+
+Use these whenever the user wants to track a product for price drops, asks "what's on my watchlist", or wants to stop watching something.
+
+- \`watchlistAdd({ productQuery, intent })\` — fuzzy-resolves the product against the catalog and stores a watch entry.
+  - **Capture the user's intent in their own words.** Don't normalize it to a number. Examples of good intents:
+    - "price drops below $1000"
+    - "matches its recent low"
+    - "on sale and not seen lower in the last 30 days"
+    - "drops 10% from current"
+  - The watch is evaluated by a background agent that has access to current price + recent price history. The user's intent is the rule the agent will use to decide when to ask for purchase approval.
+- \`watchlistList({})\` — returns active watches (with their intent text), unacknowledged auto-purchases (with order details), and recently denied entries. Calling this acknowledges any unacknowledged purchases, so do NOT call it speculatively.
+- \`watchlistRemove({ watchId })\` — needs the id from a prior \`watchlistList\` call.
+
+After \`watchlistList\` runs, the UI renders any results as styled cards (order-confirmation cards for unacknowledged purchases, plus active-watch and recently-denied lists). The user can SEE all the details in the cards. Your reply should be ONE short sentence acknowledging what happened (e.g. "Your iPhone watch fired while you were away — here's the receipt." or "Here's your watchlist."). Do NOT repeat product names, prices, totals, or order IDs in chat text — the card already shows them. Do NOT call \`watchlistList\` again on later turns to re-show the same purchase.
+`;
+
 export const artifactsPrompt = `
 Artifacts is a side panel that displays content alongside the conversation. It supports scripts (code), documents (text), and spreadsheets. Changes appear in real-time.
 
@@ -87,7 +105,10 @@ function formatCapabilityLine(capability: Capability): string {
   return `- **${capability.displayName}** — ${capability.description}`;
 }
 
-export const agentIdentityPrompt = (identity: AgentIdentity): string => {
+export const agentIdentityPrompt = (
+  identity: AgentIdentity,
+  _options: { toolsActive: boolean } = { toolsActive: true }
+): string => {
   const availableSection =
     identity.available.length > 0
       ? `Available now:\n${identity.available.map(formatCapabilityLine).join("\n")}`
@@ -139,13 +160,25 @@ export const systemPrompt = ({
   agentIdentity: AgentIdentity;
 }) => {
   const requestPrompt = getRequestPromptFromHints(requestHints);
-  const identityPrompt = agentIdentityPrompt(agentIdentity);
+  const identityPrompt = agentIdentityPrompt(agentIdentity, { toolsActive });
+
+  // Hoisted to the very top of the system prompt — buried in the identity
+  // section, the model treats casual greetings as not-warranting-a-tool-call.
+  // This block makes the tool call mandatory regardless of user input.
+  const watchlistAlert =
+    toolsActive && agentIdentity.unacknowledgedPurchaseCount > 0
+      ? `# URGENT: pending watchlist update
+
+The user has ${agentIdentity.unacknowledgedPurchaseCount} unacknowledged auto-purchase(s) from their watchlist. **Before you generate ANY text response — even to a casual "hi" — your FIRST action this turn MUST be to call the \`watchlistList\` tool exactly once.** This applies regardless of what the user said. The UI renders styled order-confirmation cards from the result; after the tool call, add ONE short acknowledgement sentence (e.g. "Your iPhone watch fired while you were away — here's the receipt."). Do NOT repeat product names, prices, or order IDs in your text; the card already shows them. Calling \`watchlistList\` acknowledges these purchases so they will not appear again on later turns.
+
+`
+      : "";
 
   if (!toolsActive) {
-    return `${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}`;
+    return `${watchlistAlert}${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}`;
   }
 
-  return `${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}\n\n${userDataToolsPrompt}\n\n${artifactsPrompt}`;
+  return `${watchlistAlert}${identityPrompt}\n\n${regularPrompt}\n\n${requestPrompt}\n\n${userDataToolsPrompt}\n\n${watchlistToolsPrompt}\n\n${artifactsPrompt}`;
 };
 
 export const codePrompt = `

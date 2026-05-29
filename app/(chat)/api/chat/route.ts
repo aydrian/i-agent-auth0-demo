@@ -29,6 +29,9 @@ import { getWeather } from "@/lib/ai/tools/get-weather";
 import { gmailSearch } from "@/lib/ai/tools/gmail-search";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/update-document";
+import { watchlistAdd } from "@/lib/ai/tools/watchlist-add";
+import { watchlistList } from "@/lib/ai/tools/watchlist-list";
+import { watchlistRemove } from "@/lib/ai/tools/watchlist-remove";
 import { auth0 } from "@/lib/auth0";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
@@ -215,6 +218,9 @@ export async function POST(request: Request) {
         const tools = {
           getWeather,
           gmailSearch,
+          watchlistAdd: watchlistAdd({ userId: session.user.sub }),
+          watchlistList: watchlistList({ userId: session.user.sub }),
+          watchlistRemove: watchlistRemove({ userId: session.user.sub }),
           createDocument: createDocument({
             session,
             dataStream,
@@ -289,6 +295,9 @@ export async function POST(request: Request) {
             ? [
                 "getWeather",
                 "gmailSearch",
+                "watchlistAdd",
+                "watchlistList",
+                "watchlistRemove",
                 "createDocument",
                 "editDocument",
                 "updateDocument",

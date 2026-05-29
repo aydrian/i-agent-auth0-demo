@@ -1,0 +1,12 @@
+{% extends "admin/layout.html" %}
+{% block content %}
+<div class="login-form">
+  <h1>Sign in</h1>
+  {% if error %}<div class="alert">Invalid admin key.</div>{% endif %}
+  <form method="post" action="/admin/login">
+    <label for="admin_key">Admin key</label>
+    <input type="password" id="admin_key" name="admin_key" required autofocus>
+    <p style="margin-top: 1rem;"><button class="btn btn-primary" type="submit">Sign in</button></p>
+  </form>
+</div>
+{% endblock %}
