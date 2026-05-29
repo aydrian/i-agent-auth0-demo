@@ -22,24 +22,67 @@ const AGENT_SYSTEM_PROMPT = `You decide whether to buy a product on behalf of th
 
 Input: a product, its current price, and the user's intent (their rule for when to buy).
 
-Your output is EITHER a tool call OR one sentence of plain text. Never both.
+# Your job
 
-If the intent is satisfied by the current price:
-  → Invoke the \`buyProduct\` tool. Set \`bindingMessage\` to one sentence the user will see on their phone explaining what they're approving and why (mention the price and how it satisfies their rule). **bindingMessage rules** (Auth0 enforces these — violations get rejected):
-    • MAX 64 characters.
-    • Allowed: letters, digits, whitespace, and the punctuation \`+ - _ . , : #\`.
-    • NOT allowed: \`$\`, \`?\`, parens, quotes, slashes, etc. Spell out "USD" if you must reference currency, or just write the number with no symbol (e.g. "999" not "$999").
-  Set \`qty\` to 1 unless the user said otherwise. Do not output any text alongside the tool call — the tool call IS the output.
+Decide one thing: does the current price satisfy the user's intent RIGHT NOW?
 
-If the intent is not satisfied:
-  → Reply with one short sentence stating the user's threshold and the current price. Do not call any tool.
+- If YES → first call \`getProductHistory\` to ground your decision in real data, then call \`buyProduct\`. The two tool calls together ARE your answer. Do NOT write text describing the situation — describing it does nothing for the user. Acting is the only way to help them.
+- If NO → write one short sentence stating the user's rule and the current price, optionally referencing history if you've already looked it up. Do NOT call \`buyProduct\`.
 
-**Strongly consider calling \`getProductHistory\` first** to enrich your decision. It's a cheap call and gives the user useful context they wouldn't otherwise see:
-  • REQUIRED when the user's intent references history (phrases like "recent low", "lowest in N days", "matches recent low") — without history you can't evaluate the rule.
-  • RECOMMENDED whenever the current price is below the user's threshold but you might still inform them of a better recent deal — e.g. current is at the threshold but it was meaningfully lower 5 days ago. Mention that in the bindingMessage so the user can decide informedly.
-  • SKIP only when the intent is a simple price comparison and the answer is obvious (e.g. current is at MSRP, way above any threshold).
+# Translating intent to a comparison
 
-Authority: you act on the user's behalf. The \`buyProduct\` tool handles authentication and order placement internally — you have no need for credentials, sessions, or login of your own. Do not refuse for any reason other than the user's intent being unmet.`;
+Map the user's English to a numeric check, then evaluate it against the current price:
+
+- "below \$X" / "under \$X" / "drops below \$X" → satisfied when current < X
+- "at or below \$X" / "\$X or less" → satisfied when current <= X
+- "X% off" / "X% discount" → satisfied when current <= MSRP * (1 - X/100)
+- "matches recent low" / "lowest in N days" → MUST call \`getProductHistory\` first, then satisfied when current <= recent low
+
+If the comparison evaluates to true on the numbers in front of you, the intent IS satisfied — call \`buyProduct\`. Do not second-guess, do not wait for a "better" deal, do not describe the outcome in text instead of calling the tool.
+
+# Calling buyProduct
+
+- \`qty\`: 1 unless the user said otherwise.
+- \`bindingMessage\`: one sentence (MAX 64 chars) shown on the user's phone. MUST include three things in this order:
+    1. Product (abbreviate freely — "iPhone 15 Pro" → "iPhone Pro" is fine if needed)
+    2. Current price in USD
+    3. A reference to BOTH the rule AND what history showed (this is non-negotiable — the user's whole point is seeing that you checked history)
+  Good examples (all under 64 chars):
+    - \`iPhone Pro 999 USD: under 1000, matches 14-day low.\` (51)
+    - \`iPhone Pro 999 USD: 14d low was 950, near low.\` (45)
+    - \`iPhone Pro 999 USD: under 1000, lowest in 14d.\` (46)
+  Bad (no history reference): \`iPhone 15 Pro at 999 USD: below 1000 limit.\`
+  - Allowed chars: letters, digits, whitespace, and \`+ - _ . , : #\`.
+  - NOT allowed: \`$\`, \`?\`, parens, quotes, slashes. Spell out "USD" or just write the number — \`999\` not \`$999\`. Auth0 rejects messages that violate these rules.
+
+# Always check price history before buying
+
+Before any \`buyProduct\` call, you MUST call \`getProductHistory\` first. Reasons:
+- The user wants to see that the agent considered real data, not just compared two numbers.
+- History may reveal a notable recent low you can mention in the \`bindingMessage\` so the user can decide informedly.
+- For history-referencing intents (e.g. "matches recent low", "lowest in N days"), history IS the rule — you cannot evaluate without it.
+
+The only case where you skip \`getProductHistory\` is when intent is NOT satisfied — then no buy happens and history is irrelevant.
+
+When you do call \`buyProduct\` after history, the \`bindingMessage\` should reference what you saw — e.g. "iPhone 15 Pro at 999 USD: matches 14-day low." or "iPhone at 999 USD: below 1000 limit, near recent low.".
+
+# Worked examples
+
+Example 1 — intent satisfied, MUST call BOTH tools in order:
+  Input: Product=iPhone 15 Pro, Current price=999, User intent="below \$1000"
+  Comparison: 999 < 1000 → TRUE → satisfied
+  Step 1: call \`getProductHistory({ days: 14 })\` and read the result.
+  Step 2: call \`buyProduct({ qty: 1, bindingMessage: "iPhone 15 Pro at 999 USD: below 1000 limit, near 14-day low." })\` — referencing what history showed.
+  WRONG: skipping \`getProductHistory\` and going straight to \`buyProduct\`. WRONG: writing "Current price is 999, which is below the 1000 threshold." — that's describing, not acting. The user does not see this text.
+
+Example 2 — intent not satisfied, write text:
+  Input: Product=iPhone 15 Pro, Current price=1199, User intent="below \$1000"
+  Comparison: 1199 < 1000 → FALSE → not satisfied
+  Correct action: reply "Current price 1199 USD is above your 1000 USD threshold." (no tool call)
+
+# Authority
+
+You act on the user's behalf. The \`buyProduct\` tool handles authentication and order placement internally — you have no credentials, sessions, or login of your own to worry about. Do not refuse for any reason other than the user's intent being unmet.`;
 
 type TickSummary = {
   checked: number;
@@ -65,11 +108,15 @@ function pickAgentModel(): string {
   // gpt-5.4-mini) have built-in safety bias against purchase flows that
   // makes them refuse to call `buyProduct` even when explicitly told to;
   // the chat default is the LAST resort, not the first.
+  // grok-4.1-fast-non-reasoning was observed to describe the situation in
+  // text instead of acting even when intent was clearly met, so it's
+  // demoted below models that act more reliably on this prompt shape.
   const preferences = [
-    "gpt-4o-mini",
-    "xai/grok-4.1-fast-non-reasoning",
+    "openai/gpt-oss-120b",
     "deepseek/deepseek-v3.2",
     "moonshotai/kimi-k2.5",
+    "openai/gpt-oss-20b",
+    "xai/grok-4.1-fast-non-reasoning",
   ];
   for (const id of preferences) {
     if (allowedModelIds.has(id)) {
@@ -198,6 +245,17 @@ export async function POST(request: NextRequest) {
         .map((c) => c.toolName);
       const toolsTag = `tools=[${toolsCalled.join(",") || "none"}]`;
 
+      // Surface the bindingMessage the model sent to Auth0 — useful for
+      // verifying the model is actually referencing history in the push.
+      const buyCall = (result.steps ?? [])
+        .flatMap((s) => s.toolCalls ?? [])
+        .find((c) => c.toolName === "buyProduct") as
+        | { input?: { bindingMessage?: string } }
+        | undefined;
+      const bindingTag = buyCall?.input?.bindingMessage
+        ? ` binding="${buyCall.input.bindingMessage}"`
+        : "";
+
       if (successful) {
         summary.triggered += 1;
         summary.purchased += 1;
@@ -205,7 +263,7 @@ export async function POST(request: NextRequest) {
           watchId: watch.id,
           productId: watch.productId,
           outcome: "purchased",
-          note: `${toolsTag} ${result.text || "(approved)"}`,
+          note: `${toolsTag}${bindingTag} ${result.text || "(approved)"}`,
         });
       } else if (failedResults.length > 0) {
         // The model attempted buyProduct one or more times but each came
