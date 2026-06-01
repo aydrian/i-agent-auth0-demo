@@ -148,7 +148,7 @@
 >
 > - identity-aware system prompt
 > - Token Vault for delegated standing access
-> - CIBA for delegated single-action approval
+> - CIBA for human-in-the-loop approval
 >
 > One control plane.
 >

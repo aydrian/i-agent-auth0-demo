@@ -15,7 +15,7 @@ This is content + intent, not visual design — let the deck owner translate to 
 | | | |
 |---|---|---|
 | **Identity** | **Token Vault** | **CIBA** |
-| The agent knows who the user is. Auth0 session resolved at request time, threaded into the system prompt with the user's name and linked accounts. | The agent calls third-party APIs on the user's behalf. Refresh tokens live in Auth0; your app never holds them. Scopes pinned per integration. | The agent takes high-stakes actions when you're not in the loop. Push consent to the user's phone with a binding message the agent itself composes. |
+| The agent knows who the user is. Auth0 session resolved at request time, threaded into the system prompt with the user's name and linked accounts. | The agent calls third-party APIs on the user's behalf. Refresh tokens live in Auth0; your app never holds them. Scopes pinned per integration. | Human-in-the-loop for high-stakes actions. The agent pushes consent to the user's phone with a binding message it composed itself. |
 
 ### Kicker (large, centered under the three columns)
 
@@ -31,7 +31,7 @@ This is content + intent, not visual design — let the deck owner translate to 
 
 ## Speaker note (~10s, end of Wrap)
 
-> *"Three pillars, one identity surface. Identity-aware prompts, Token Vault for standing scoped access, CIBA for in-the-moment consent. The repo is open if you want to read the code — and if you're shipping an agent, this is where to start."*
+> *"Three pillars, one identity surface. Identity-aware prompts, Token Vault for standing scoped access, CIBA for human-in-the-loop approval. The repo is open if you want to read the code — and if you're shipping an agent, this is where to start."*
 
 ## Design notes for the deck owner
 
