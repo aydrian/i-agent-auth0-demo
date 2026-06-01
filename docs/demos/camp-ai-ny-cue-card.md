@@ -7,9 +7,9 @@
 | 0:00–0:30 | Frame |
 | 0:30–1:15 | Identity |
 | 1:15–2:30 | Token Vault |
-| 2:30–4:15 | CIBA |
-| 4:15–5:00 | Wrap |
-| +~0:30 | Optional: agent says no |
+| 2:30–3:45 | CIBA |
+| 3:45–4:30 | Wrap |
+| 4:30–5:00 | Buffer / optional: agent says no |
 
 ---
 
@@ -18,14 +18,19 @@
 **Do**
 
 - Show the chat tab logged in.
+- Ask the audience the show-of-hands question; pause for hands on each.
 
 **Say**
 
-> Three problems every founder shipping an agent runs into.
+> Quick show of hands — who here is shipping an agent today?
 >
-> **One:** who's the user?
+> OK, who's planning to in the next six months?
 >
-> **Two:** how does the agent call APIs without you holding their credentials?
+> Cool, that's most of you. Three problems bite every team shipping an agent for real users.
+>
+> **One:** who's the user — does the agent know?
+>
+> **Two:** how does it call third-party APIs without your app holding the user's credentials?
 >
 > **Three:** how does it take high-stakes actions without bothering the user every single time *and* without going rogue?
 >
@@ -49,11 +54,11 @@
 
 **Say**
 
-> The agent isn't a generic assistant — it's *my* instance.
+> The agent your user signs into isn't generic — it's *their* instance.
 >
-> Its system prompt knows who I am because the chat route resolves my Auth0 session and threads my name plus my linked accounts into the prompt at request time.
+> The system prompt knows who they are because the chat route resolves their Auth0 session and threads their name plus their linked accounts into the prompt at request time.
 >
-> Same plumbing tells it which capabilities are available right now versus which need authorization.
+> Same plumbing tells the agent which capabilities are available right now versus which need authorization.
 >
 > *That* groundwork is what lets the next two pillars exist.
 
@@ -78,50 +83,52 @@
 
 > Notice the agent didn't refuse.
 >
-> The tool ran, got a 401, and the UI surfaced this card — *the user* decides whether to authorize.
+> The tool ran, got a 401, and the UI surfaced this card — *your user* decides whether to authorize.
 >
-> Scope is `gmail.readonly`, not 'full mail access'. Auth0 stores the refresh token in Token Vault — never in our app.
+> Scope is `gmail.readonly`, not 'full mail access'. Auth0 stores the user's refresh token in Token Vault — your app never touches it.
 >
-> When I ask a *second* email question, no popup. Standing scoped access until I revoke.
+> When the user asks a *second* email question, no popup. Standing scoped access until the user revokes.
 >
-> The agent never saw a Google credential — just a short-lived access token Auth0 minted at call time.
+> Your agent never sees a Google credential — just a short-lived access token Auth0 mints at call time.
 
 ---
 
-## 2:30–4:15 · CIBA
+## 2:30–3:45 · CIBA
 
 **Lead-in**
 
 > Reading email is one thing. Let's give the agent something it can actually mess up.
+>
+> Quick context first — the "Shop API" you're about to see is a stand-in for any e-commerce backend, think Amazon or Shopify.
 
 **Do**
 
 - Send: *"watch the Mac Mini M4 and buy it if it drops below $799 — I want one for my Exo cluster."*
 - Agent confirms the watch.
 - Pivot away from chat ("the agent runs on its own from here").
-- Open <http://localhost:8000/admin>; drop Mac Mini to **$749 for 60 minutes**.
-- Terminal: `pnpm demo:camp-ai-ny trigger`
+- Terminal: `pnpm demo:camp-ai-ny trigger`. Say: *"because this is a demo I can't wait for the cron to fire, so I'm forcing the tick now."*
 - Phone buzzes.
 - **Read the agent-composed binding message aloud** — emphasize the agent wrote it, not a template.
 - Approve.
+- *Then* open <http://localhost:8000/admin>; Mac Mini sale already at **$749** (dropped pre-flight). Say: *"behind the scenes the price had dropped — the agent saw it before I did."*
 
 **Say**
 
-> The watch row stores my intent in plain English.
+> The watch row stores the user's intent in plain English.
 >
-> A cron tick wakes an LLM agent — same one I just talked to, but headless — that pulls current price plus history, decides whether my intent is satisfied, and *only then* fires CIBA.
+> A cron tick wakes an LLM agent — same one we just talked to, but headless — that pulls current price plus history, decides whether the user's intent is satisfied, and *only then* fires CIBA.
 >
-> Auth0 routes a Guardian push to my phone with a binding message the agent itself composed.
+> Auth0 routes a Guardian push to the user's phone with a binding message the agent itself composed.
 >
-> I approve, the agent gets a `product:buy`-scoped token for one call, and the purchase happens.
+> The user approves, the agent gets a `product:buy`-scoped token for one call, and the purchase happens.
 >
-> If the agent had decided not to act, I'd never have been bothered.
+> If the agent had decided not to act, the user would never have been bothered.
 >
 > **The agent doesn't ask forgiveness — it asks permission, in real time.**
 
 ---
 
-## 4:15–5:00 · Wrap
+## 3:45–4:30 · Wrap
 
 **Lead-in**
 
