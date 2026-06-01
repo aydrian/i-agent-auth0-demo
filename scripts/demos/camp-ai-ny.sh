@@ -6,9 +6,10 @@
 # identity + Token Vault + CIBA, Mac Mini buy scenario).
 #
 # Subcommands:
-#   reset        Clear active sales (shop-api) and Watchlist rows (postgres).
-#                Reminds the operator to click Disconnect on /profile to drop
-#                the Token Vault Google grant for a clean cold start.
+#   reset        Clear active sales (shop-api), Watchlist rows (postgres), and
+#                the demo user's chat history (Chat / Message_v2 / Vote_v2 /
+#                Stream). Reminds the operator to click Disconnect on /profile
+#                to drop the Token Vault Google grant for a clean cold start.
 #   check        Verify shop-api up, postgres reachable, Auth0 client has
 #                CIBA grant + guardian-push channel, Mac Mini in catalog,
 #                and SEED_GMAIL_* vars present.
@@ -21,6 +22,9 @@
 # Env vars consumed (loaded from .env.local if present):
 #   SHOP_API_URL              defaults to http://localhost:8000/api/shop
 #   ADMIN_API_KEY             required for `reset`
+#   DEMO_USER_ID              defaults to auth0|69a7324aab8e8c8f65f337be
+#                             (Camp AI demo account); used by `reset` to wipe
+#                             that user's chat history
 #   AUTH0_CLIENT_ID           required for `check`
 #   CRON_SECRET               required for `trigger`
 #   APP_BASE_URL              defaults to http://localhost:3000 (used by `trigger`)
@@ -74,9 +78,10 @@ usage() {
 Usage: scripts/demos/camp-ai-ny.sh <subcommand>
 
 Subcommands:
-  reset        Clear active sales (shop-api) and Watchlist rows (postgres).
-               Prints a reminder to click Disconnect on /profile so the
-               next demo run starts cold for Token Vault as well.
+  reset        Clear active sales (shop-api), Watchlist rows, and the demo
+               user's chat history (postgres). Prints a reminder to click
+               Disconnect on /profile so the next demo run starts cold for
+               Token Vault as well.
   check        Verify the demo's preflight: shop-api reachable, postgres
                reachable and Watchlist table present, Auth0 client has CIBA
                grant + guardian-push channel, Mac Mini in shop catalog, and
@@ -98,6 +103,8 @@ Examples:
 Env vars (loaded from .env.local):
   SHOP_API_URL              defaults to http://localhost:8000/api/shop
   ADMIN_API_KEY             required for `reset`
+  DEMO_USER_ID              defaults to auth0|69a7324aab8e8c8f65f337be
+                            (the Camp AI demo account; used by `reset`)
   AUTH0_CLIENT_ID           required for `check`
   CRON_SECRET               required for `trigger`
   APP_BASE_URL              defaults to http://localhost:3000 (used by `trigger`)
@@ -118,6 +125,7 @@ load_env() {
     set +a
   fi
   : "${SHOP_API_URL:=http://localhost:8000/api/shop}"
+  : "${DEMO_USER_ID:=auth0|69a7324aab8e8c8f65f337be}"
 }
 
 # ---------------------------------------------------------------------------
@@ -157,8 +165,33 @@ do_reset() {
   fi
   rm -f "$psql_err"
 
+  # Chat history: FKs are ON DELETE NO ACTION, so we delete dependents
+  # first (Vote_v2, Stream, Message_v2), then Chat. Wrapped in a
+  # transaction with ON_ERROR_STOP so a partial wipe can't leave the
+  # demo user's sidebar in an inconsistent state.
+  note "Clearing chat history for demo user $DEMO_USER_ID..."
+  psql_err=$(mktemp)
+  if ! docker compose exec -T postgres \
+      psql -U postgres -d chatbot \
+      -v ON_ERROR_STOP=1 \
+      -v "demo_user=${DEMO_USER_ID}" \
+      >/dev/null 2>"$psql_err" <<'SQL'; then
+BEGIN;
+DELETE FROM "Vote_v2"    WHERE "chatId" IN (SELECT id FROM "Chat" WHERE "userId" = :'demo_user');
+DELETE FROM "Stream"     WHERE "chatId" IN (SELECT id FROM "Chat" WHERE "userId" = :'demo_user');
+DELETE FROM "Message_v2" WHERE "chatId" IN (SELECT id FROM "Chat" WHERE "userId" = :'demo_user');
+DELETE FROM "Chat"       WHERE "userId" = :'demo_user';
+COMMIT;
+SQL
+    cat "$psql_err" >&2
+    rm -f "$psql_err"
+    die "Failed to clear chat history for $DEMO_USER_ID"
+  fi
+  rm -f "$psql_err"
+
   ok "Cleared $sale_count active sales"
   ok "Cleared all rows from \"Watchlist\" table"
+  ok "Cleared chat history for demo user"
   echo
   note "Don't forget the Token Vault side of the reset:"
   info "open http://localhost:3000/profile and click Disconnect on the Google account"

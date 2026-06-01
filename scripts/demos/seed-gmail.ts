@@ -148,16 +148,28 @@ function base64UrlEncode(input: string): string {
     .replace(/=+$/, "");
 }
 
+// RFC 2047 encoded-word: header bytes must be 7-bit ASCII, so wrap any
+// non-ASCII value (e.g. an em dash) in =?UTF-8?B?...?= or Gmail will
+// fall back to Latin-1 and render mojibake.
+function encodeHeaderValue(value: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: header range check
+  if (/^[\x00-\x7F]*$/.test(value)) {
+    return value;
+  }
+  const b64 = Buffer.from(value, "utf-8").toString("base64");
+  return `=?UTF-8?B?${b64}?=`;
+}
+
 function buildRfc822(msg: CannedMessage): string {
   const date = new Date(Date.now() - msg.ageHours * 60 * 60 * 1000);
   const headers = [
-    `From: ${msg.from}`,
+    `From: ${encodeHeaderValue(msg.from)}`,
     "To: me",
-    `Subject: ${msg.subject}`,
+    `Subject: ${encodeHeaderValue(msg.subject)}`,
     `Date: ${date.toUTCString()}`,
     "MIME-Version: 1.0",
     `Content-Type: text/plain; charset="UTF-8"`,
-    "Content-Transfer-Encoding: 7bit",
+    "Content-Transfer-Encoding: 8bit",
   ];
   return `${headers.join("\r\n")}\r\n\r\n${msg.body}\r\n`;
 }
