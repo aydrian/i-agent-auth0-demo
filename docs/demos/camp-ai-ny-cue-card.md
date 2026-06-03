@@ -16,7 +16,10 @@
 ## 0:00–0:30 · Frame
 
 *Show the chat tab logged in.*
-> Self Introduction - I'm Aydrian Howard, Senior Developer Advocate at Auth0. I'm also a Hoosier living in New York. Usually in my profile pictures, you'd see a corgi face right here. That's Atticus.
+> Howdy I'm Aydrian Howard, Senior Developer Advocate at Auth0. 
+> 
+> I'm a Hoosier living in New York. Usually in my profile pictures, you'd see a corgi face right here. That's Atticus.
+> 
 > Quick show of hands — who here is shipping an agent today?
 
 *Pause for hands.*
@@ -26,7 +29,7 @@
 *Pause for hands.*
 
 > Cool, well if you don't, you will soon?
->
+> 
 > **One:** who's the user — does the agent know?
 >
 > **Two:** how does it call third-party APIs without your app holding the user's credentials?
