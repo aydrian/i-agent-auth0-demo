@@ -16,16 +16,16 @@
 ## 0:00–0:30 · Frame
 
 *Show the chat tab logged in.*
-
+> Self Introduction - I'm Aydrian Howard, Senior Developer Advocate at Auth0. I'm also a Hoosier living in New York. Usually in my profile pictures, you'd see a corgi face right here. That's Atticus.
 > Quick show of hands — who here is shipping an agent today?
 
 *Pause for hands.*
 
-> OK, who's planning to in the next six months?
+> OK, who know what CIBA is?
 
 *Pause for hands.*
 
-> Cool, that's most of you. Three problems bite every team shipping an agent for real users.
+> Cool, well if you don't, you will soon?
 >
 > **One:** who's the user — does the agent know?
 >
@@ -50,9 +50,7 @@
 > The agent your user signs into isn't generic — it's *their* instance.
 >
 > The system prompt knows who they are because the chat route resolves their Auth0 session and threads their name plus their linked accounts into the prompt at request time.
-
-*Open `lib/ai/agent-identity.ts` in a side window; gesture at `buildAgentIdentity` returning `userName` + capabilities.*
-
+>
 > Same plumbing tells the agent which capabilities are available right now versus which need authorization.
 >
 > *That* groundwork is what lets the next two pillars exist.
