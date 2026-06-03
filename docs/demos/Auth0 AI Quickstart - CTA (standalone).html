@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Auth0 for AI Agents — Three Pillars</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #0b0512;
+    --bg-2: #120822;
+    --ink: #f5f1ff;
+    --ink-dim: #b9aed1;
+    --ink-mute: #7d6f9a;
+    --purple: #6d3df5;
+    --purple-2: #8a5cff;
+    --purple-3: #b794ff;
+    --line: rgba(255,255,255,0.08);
+    --card: rgba(255,255,255,0.04);
+    --card-border: rgba(255,255,255,0.10);
+
+    --type-eyebrow: 24px;
+    --type-title: 76px;
+    --type-body: 32px;
+
+    --pad-top: 90px;
+    --pad-bottom: 90px;
+    --pad-x: 120px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    font-family: "Inter", system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .stage {
+    width: 1920px;
+    height: 1080px;
+    position: relative;
+    flex-shrink: 0;
+    transform-origin: center center;
+  }
+
+  section {
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+    color: var(--ink);
+    overflow: hidden;
+  }
+
+  /* Reusable purple radial halo background */
+  .halo::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 55%, rgba(138, 92, 255, 0.55) 0%, rgba(109, 61, 245, 0.25) 40%, rgba(11, 5, 18, 0) 70%),
+      radial-gradient(ellipse 100% 100% at 50% 100%, rgba(58, 22, 145, 0.35) 0%, rgba(11, 5, 18, 0) 60%);
+    pointer-events: none;
+  }
+
+  .frame {
+    position: absolute;
+    inset: 0;
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    display: flex;
+    flex-direction: column;
+    z-index: 1;
+  }
+
+  /* Eyebrow label (matches deck style) */
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    font-size: var(--type-eyebrow);
+    color: var(--ink-dim);
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .eyebrow .dot {
+    width: 10px; height: 10px;
+    border-radius: 999px;
+    background: var(--purple-3);
+    box-shadow: 0 0 18px rgba(183,148,255,0.8);
+  }
+
+  h1.title {
+    font-size: var(--type-title);
+    line-height: 1.02;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  /* Header block */
+  .header {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  /* Three pillar grid */
+  .pillars-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 36px;
+    margin-top: 56px;
+  }
+
+  .pcard {
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+    border: 1px solid var(--card-border);
+    border-radius: 22px;
+    padding: 40px 40px 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    position: relative;
+    overflow: hidden;
+    min-height: 360px;
+  }
+  .pcard::after {
+    content: "";
+    position: absolute;
+    top: -40%; right: -20%;
+    width: 80%; height: 140%;
+    background: radial-gradient(ellipse 60% 60% at 70% 30%, rgba(138,92,255,0.18), transparent 70%);
+    pointer-events: none;
+  }
+  .pcard .pn {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    color: var(--purple-3);
+    font-size: 24px;
+    letter-spacing: 0.22em;
+  }
+  .pcard .pico {
+    width: 64px; height: 64px;
+    border-radius: 14px;
+    background: rgba(138,92,255,0.15);
+    border: 1px solid rgba(138,92,255,0.30);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pcard .ptitle {
+    font-size: 36px;
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+  .pcard .pblurb {
+    font-size: 22px;
+    line-height: 1.45;
+    color: var(--ink-dim);
+    margin-top: auto;
+  }
+
+  /* Kicker — the line the audience repeats back */
+  .kicker-line {
+    margin: 56px auto 0;
+    max-width: 1500px;
+    text-align: center;
+    font-size: 60px;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    background: linear-gradient(180deg, #ffffff 0%, #b794ff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-wrap: balance;
+  }
+
+  /* Footer with two get-started links */
+  .footer-row {
+    margin-top: auto;
+    display: flex;
+    justify-content: center;
+    gap: 96px;
+    padding-top: 28px;
+  }
+  .footer-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .footer-item .lab {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    color: var(--purple-3);
+    font-size: 18px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+  .footer-item .url {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    color: var(--ink);
+    font-size: 28px;
+    letter-spacing: 0.01em;
+  }
+</style>
+</head>
+<body>
+
+<div class="stage" id="stage">
+  <section class="halo">
+    <div class="frame">
+      <div class="header">
+        <span class="eyebrow"><span class="dot"></span>Three pillars · One control plane</span>
+        <h1 class="title">Auth0 for AI Agents.</h1>
+      </div>
+
+      <div class="pillars-grid-3">
+        <div class="pcard">
+          <div class="pn">01</div>
+          <div class="pico">
+            <svg viewBox="0 0 32 32" width="32" height="32" fill="none"><circle cx="16" cy="12" r="5" stroke="#b794ff" stroke-width="2"></circle><path d="M6 26c0-5 4.5-8 10-8s10 3 10 8" stroke="#b794ff" stroke-width="2" stroke-linecap="round"></path></svg>
+          </div>
+          <div class="ptitle">Identity</div>
+          <div class="pblurb">The agent knows who the user is. Auth0 session resolved at request time, threaded into the system prompt with the user's name and linked accounts.</div>
+        </div>
+
+        <div class="pcard">
+          <div class="pn">02</div>
+          <div class="pico">
+            <svg viewBox="0 0 32 32" width="32" height="32" fill="none"><rect x="6" y="13" width="20" height="14" rx="2" stroke="#b794ff" stroke-width="2"></rect><path d="M10 13V9a6 6 0 0 1 12 0v4" stroke="#b794ff" stroke-width="2"></path><circle cx="16" cy="20" r="2" fill="#b794ff"></circle></svg>
+          </div>
+          <div class="ptitle">Token Vault</div>
+          <div class="pblurb">The agent calls third-party APIs on the user's behalf. Refresh tokens live in Auth0; your app never holds them. Scopes pinned per integration.</div>
+        </div>
+
+        <div class="pcard">
+          <div class="pn">03</div>
+          <div class="pico">
+            <svg viewBox="0 0 32 32" width="32" height="32" fill="none"><path d="M6 16h6l3-7 4 14 3-7h4" stroke="#b794ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          </div>
+          <div class="ptitle">CIBA</div>
+          <div class="pblurb">Human-in-the-loop for high-stakes actions. The agent pushes consent to the user's phone with a binding message it composed itself.</div>
+        </div>
+      </div>
+
+      <div class="kicker-line">
+        The agent owned the decision; you owned the consent.
+      </div>
+
+      <div class="footer-row">
+        <div class="footer-item">
+          <span class="lab">Try it</span>
+          <span class="url">auth0.com/ai</span>
+        </div>
+        <div class="footer-item">
+          <span class="lab">Read the code</span>
+          <span class="url">github.com/aydrian/i-agent-auth0-demo</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  // Scale the 1920×1080 stage to fit any viewport while preserving aspect ratio.
+  (function () {
+    var stage = document.getElementById("stage");
+    function fit() {
+      var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+      stage.style.transform = "scale(" + s + ")";
+    }
+    window.addEventListener("resize", fit);
+    fit();
+  })();
+</script>
+
+</body>
+</html>

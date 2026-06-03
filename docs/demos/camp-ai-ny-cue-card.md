@@ -21,7 +21,7 @@
 
 *Pause for hands.*
 
-> OK, who know what CIBA is?
+> OK, who knows what CIBA is?
 
 *Pause for hands.*
 
